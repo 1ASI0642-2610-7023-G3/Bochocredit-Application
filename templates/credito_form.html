@@ -3,16 +3,51 @@
 {% block page_title %}{{ titulo }}{% endblock %}
 {% block extra_head %}
 <style>
-.preview-panel { background: linear-gradient(135deg,#0b1e3d,#1a3a6e); border-radius:16px; padding:1.5rem; color:#fff; position:sticky; top:80px; }
-.preview-panel .p-label { font-size:.68rem; color:rgba(255,255,255,.5); text-transform:uppercase; letter-spacing:.8px; }
-.preview-panel .p-val { font-size:1.1rem; font-weight:800; }
-.preview-panel .p-sep { border-top:1px solid rgba(255,255,255,.1); margin:.8rem 0; }
-.preview-panel .highlight { background:rgba(6,182,212,.15); border:1px solid rgba(6,182,212,.3); border-radius:10px; padding:.7rem 1rem; }
-.mini-cron { max-height:260px; overflow-y:auto; margin-top:1rem; }
-.mini-cron table { font-size:.72rem; width:100%; color:rgba(255,255,255,.8); }
-.mini-cron th { color:rgba(255,255,255,.4); padding:.25rem .4rem; }
-.mini-cron td { padding:.22rem .4rem; border-bottom:1px solid rgba(255,255,255,.05); }
-.cap-field { display:none; }
+.preview-panel {
+  background: linear-gradient(160deg, #0f172a 0%, #1e3a5f 100%);
+  border-radius: 20px; padding: 1.6rem; color: #fff;
+  position: sticky; top: 80px;
+  border: 1px solid rgba(59,130,246,.2);
+  box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+}
+.preview-panel .p-label {
+  font-size: .67rem; color: rgba(255,255,255,.45);
+  text-transform: uppercase; letter-spacing: 1px; font-weight: 700;
+}
+.preview-panel .p-val { font-size: 1.05rem; font-weight: 800; letter-spacing: -.3px; }
+.preview-panel .p-sep { border-top: 1px solid rgba(255,255,255,.08); margin: .85rem 0; }
+.preview-panel .highlight {
+  background: linear-gradient(135deg, rgba(6,182,212,.15), rgba(59,130,246,.1));
+  border: 1px solid rgba(6,182,212,.3); border-radius: 12px; padding: .9rem 1rem;
+}
+.mini-cron { max-height: 260px; overflow-y: auto; margin-top: .75rem; }
+.mini-cron table { font-size: .72rem; width: 100%; color: rgba(255,255,255,.8); }
+.mini-cron th { color: rgba(255,255,255,.4); padding: .25rem .4rem; font-weight: 700; }
+.mini-cron td { padding: .22rem .4rem; border-bottom: 1px solid rgba(255,255,255,.05); }
+.mini-cron::-webkit-scrollbar { width: 4px; }
+.mini-cron::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px; }
+.cap-field { display: none; }
+
+/* Comparador */
+.compare-btn {
+  width: 100%; padding: .6rem;
+  background: linear-gradient(135deg, rgba(139,92,246,.25), rgba(59,130,246,.2));
+  border: 1px solid rgba(139,92,246,.4); border-radius: 10px;
+  color: #c4b5fd; font-weight: 700; font-size: .83rem;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer; transition: all .2s cubic-bezier(.4,0,.2,1);
+  display: flex; align-items: center; justify-content: center; gap: .45rem;
+}
+.compare-btn:hover {
+  background: linear-gradient(135deg, rgba(139,92,246,.4), rgba(59,130,246,.3));
+  border-color: rgba(139,92,246,.7); color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(139,92,246,.3);
+}
+.compare-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+.comp-winner { background: rgba(16,185,129,.1); border: 1px solid rgba(16,185,129,.25); border-radius: 8px; }
+.comp-current { background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.3); border-radius: 8px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -258,10 +293,41 @@
       <div class="mini-cron" id="miniCron">
         <div style="color:rgba(255,255,255,.3);font-size:.78rem;text-align:center;padding:1rem">Complete los datos para ver la simulación</div>
       </div>
+      <button class="compare-btn" id="btnComparar" disabled onclick="comparar()" type="button" style="margin-top:1rem;">
+        <i class="bi bi-bar-chart-steps"></i> Comparar Métodos
+      </button>
     </div>
   </div>
 </div>
 </form>
+
+<!-- ── MODAL COMPARADOR ── -->
+<div class="modal fade" id="modalComparar" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content" style="border-radius:20px;border:1px solid rgba(148,163,184,.15);box-shadow:0 32px 80px rgba(0,0,0,.25);font-family:'Plus Jakarta Sans',sans-serif">
+      <div class="modal-header" style="border:none;padding:1.5rem 1.8rem .5rem">
+        <div>
+          <h5 class="modal-title" style="font-weight:800;color:#0f172a;font-size:1.1rem">
+            <i class="bi bi-bar-chart-steps me-2" style="color:#8b5cf6"></i>Comparador de Métodos de Amortización
+          </h5>
+          <div style="font-size:.8rem;color:#64748b;margin-top:.2rem">Basado en los parámetros actuales del formulario</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="padding:1rem 1.8rem 1.8rem">
+        <div id="comparadorContent">
+          <div class="text-center py-5">
+            <div class="bc-loader" style="font-size:1.5rem">
+              <span></span><span></span><span></span>
+            </div>
+            <div style="color:#94a3b8;font-size:.85rem;margin-top:1rem">Calculando todos los métodos...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 {% block scripts %}
 <script>
@@ -421,7 +487,113 @@ async function calcular() {
     if (d.cronograma.length > 8) html += `<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3)">... ${d.cronograma.length - 8} filas más</td></tr>`;
     html += '</tbody></table>';
     document.getElementById('miniCron').innerHTML = html;
+    document.getElementById('btnComparar').disabled = false;
   } catch(e) { console.error(e); }
+}
+
+async function comparar() {
+  const vv = parseFloat(document.getElementById('precioVehiculo').value);
+  if (!vv || vv <= 0) return;
+  const payload = {
+    precio_vehiculo: vv,
+    cuota_inicial_pct: parseFloat(document.getElementById('cuotaInicialPct').value)||0,
+    plazo_meses: parseInt(document.getElementById('plazoMeses').value)||48,
+    tipo_tasa: document.getElementById('tipoTasa').value,
+    tasa_valor: parseFloat(document.getElementById('tasaValor').value)||15,
+    capitalizacion: document.getElementById('capitalizacion').value,
+    gracia_tipo: document.getElementById('graciaTipo').value,
+    gracia_meses: parseInt(document.getElementById('graciaMeses').value)||0,
+    tsd: parseFloat(document.getElementById('tsd').value)||0.049,
+    tsv: parseFloat(document.getElementById('tsv').value)||0.30,
+    portes: parseFloat(document.getElementById('portes').value)||3.50,
+    pct_cuota_final: (parseFloat(document.getElementById('pctCuotaFinal').value)||40)/100,
+    cok: (parseFloat(document.getElementById('cok').value)||50)/100,
+    gastos_admin: parseFloat(document.getElementById('gastosAdmin').value)||3.50,
+    gps: parseFloat(document.getElementById('gps').value)||20.00
+  };
+  const sym = SYM[document.getElementById('monedaSelect').value] || "S/";
+  const currentMethod = document.getElementById('metodoPago').value;
+  
+  const modal = new bootstrap.Modal(document.getElementById('modalComparar'));
+  document.getElementById('comparadorContent').innerHTML = `
+    <div class="text-center py-5">
+      <div class="bc-loader" style="font-size:1.5rem">
+        <span></span><span></span><span></span>
+      </div>
+      <div style="color:#94a3b8;font-size:.85rem;margin-top:1rem">Calculando todos los métodos...</div>
+    </div>
+  `;
+  modal.show();
+
+  try {
+    const r = await fetch('/api/comparar', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    const data = await r.json();
+    
+    let bestMethod = null;
+    let minTcea = Infinity;
+    Object.keys(data).forEach(k => {
+      if (!data[k].error && data[k].tcea < minTcea) {
+        minTcea = data[k].tcea;
+        bestMethod = k;
+      }
+    });
+
+    let html = `
+      <div class="table-responsive">
+        <table class="table" style="font-size:.87rem">
+          <thead style="background:#f8faff">
+            <tr>
+              <th style="color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.8px;font-size:.75rem;padding:1rem">Método de Amortización</th>
+              <th style="color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.8px;font-size:.75rem;padding:1rem">TCEA (SBS)</th>
+              <th style="color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.8px;font-size:.75rem;padding:1rem">VAN</th>
+              <th style="color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.8px;font-size:.75rem;padding:1rem">TIR Mensual</th>
+              <th style="color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.8px;font-size:.75rem;padding:1rem">Costo Total</th>
+              <th style="color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.8px;font-size:.75rem;padding:1rem">Cuota Regular</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    Object.keys(data).forEach(k => {
+      const res = data[k];
+      if (res.error) {
+        html += `<tr><td><strong>${res.label}</strong></td><td colspan="5" class="text-danger"><i class="bi bi-exclamation-triangle"></i> Error en el cálculo</td></tr>`;
+        return;
+      }
+      
+      const isCurrent = k === currentMethod;
+      const isWinner = k === bestMethod;
+      
+      let rowClass = "";
+      if (isCurrent) rowClass = "comp-current";
+      else if (isWinner) rowClass = "comp-winner";
+
+      let badges = "";
+      if (isCurrent) badges += `<span class="badge bg-primary ms-2" style="font-size:.65rem">Seleccionado</span>`;
+      if (isWinner) badges += `<span class="badge bg-success ms-2" style="font-size:.65rem"><i class="bi bi-trophy-fill me-1"></i>Mejor TCEA</span>`;
+
+      html += `
+        <tr class="${rowClass}">
+          <td style="padding:1rem"><strong>${res.label}</strong>${badges}</td>
+          <td style="padding:1rem;font-weight:800;color:${isWinner?'#059669':'#0f172a'}">${res.tcea}%</td>
+          <td style="padding:1rem">${fmt(res.van, sym)}</td>
+          <td style="padding:1rem">${res.tir}%</td>
+          <td style="padding:1rem">${fmt(res.costo_total, sym)}</td>
+          <td style="padding:1rem;font-weight:700;color:#3b82f6">${fmt(res.cuota, sym)}</td>
+        </tr>
+      `;
+    });
+
+    html += `</tbody></table></div>`;
+    document.getElementById('comparadorContent').innerHTML = html;
+  } catch(e) {
+    document.getElementById('comparadorContent').innerHTML = `
+      <div class="alert alert-danger"><i class="bi bi-x-circle me-2"></i>Error al calcular la comparación. Revise los datos e intente nuevamente.</div>
+    `;
+    console.error(e);
+  }
 }
 </script>
 {% endblock %}

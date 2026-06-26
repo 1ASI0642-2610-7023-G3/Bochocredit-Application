@@ -219,7 +219,21 @@ def dashboard():
         WHERE es_elegido = 'SI'
         ORDER BY sim.creado_en DESC LIMIT 5
     """).fetchall()
-    return render_template("dashboard.html", stats=stats, recientes=recientes)
+    # Chart data: distribution by method
+    metodos_rows = db.execute("""
+        SELECT COALESCE(metodo_pago, 'frances') as metodo, COUNT(*) as cnt
+        FROM simulaciones GROUP BY metodo_pago
+    """).fetchall()
+    metodos_data = [dict(r) for r in metodos_rows]
+    # Chart data: top 6 amounts
+    montos_rows = db.execute("""
+        SELECT REPLACE(cl.nombre_completo, ';', ' ') as cliente, sim.saldo_financiado
+        FROM simulaciones sim JOIN clientes cl ON sim.id_cliente = cl.id
+        ORDER BY sim.saldo_financiado DESC LIMIT 6
+    """).fetchall()
+    montos_data = [dict(r) for r in montos_rows]
+    return render_template("dashboard.html", stats=stats, recientes=recientes,
+                           metodos_data=metodos_data, montos_data=montos_data)
 
 # ─────────────────────────────────────────────
 # CLIENTES
@@ -1159,6 +1173,64 @@ def api_calcular():
         "cuota_regular": round(cuota_regular, 2),
         "cronograma": cronograma
     })
+
+@app.route("/api/comparar", methods=["POST"])
+@login_required
+def api_comparar():
+    d = request.get_json()
+    vv = float(d["precio_vehiculo"])
+    ci_pct = float(d["cuota_inicial_pct"])
+    ci_monto = vv * ci_pct / 100
+    sf = vv - ci_monto
+    tem = calcular_tem(d["tipo_tasa"], float(d["tasa_valor"]), d.get("capitalizacion", "mensual"))
+    plazo = int(d["plazo_meses"])
+    gracia_tipo = d.get("gracia_tipo", "ninguno")
+    gracia_meses = int(d.get("gracia_meses", 0))
+    tsd = float(d["tsd"]) / 100
+    tsv = float(d["tsv"]) / 100
+    portes = float(d["portes"])
+    gastos_admin = float(d.get("gastos_admin", 0.0))
+    gps = float(d.get("gps", 0.0))
+    pct_cuota_final = float(d.get("pct_cuota_final", 0.40))
+    cok = float(d.get("cok", 0.50))
+
+    resultados = {}
+    metodos = [
+        ("frances",           "Método Francés"),
+        ("aleman",            "Método Alemán"),
+        ("americano",         "Método Americano"),
+        ("peruano",           "Método Peruano"),
+        ("compra_inteligente","Compra Inteligente"),
+    ]
+    for key, label in metodos:
+        try:
+            if key == "compra_inteligente":
+                gastos = {"portes": portes, "gastos_admin": gastos_admin, "gps": gps}
+                cron, van, tir, tcea = generar_cronograma_compra_inteligente(
+                    sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, gastos, pct_cuota_final, cok)
+            elif key == "aleman":
+                cron, van, tir, tcea = generar_cronograma_aleman(
+                    sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps)
+            elif key == "americano":
+                cron, van, tir, tcea = generar_cronograma_americano(
+                    sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps)
+            elif key == "peruano":
+                cron, van, tir, tcea = generar_cronograma_peruano(
+                    sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps)
+            else:
+                cron, van, tir, tcea = generar_cronograma_v2(
+                    sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps)
+            normal = [f for f in cron if f.get("pg","S")=="S" and f["periodo"] <= plazo]
+            cuota = normal[0].get("cuota_total", cron[0].get("cuota_total", 0)) if normal else (
+                    cron[0].get("cuota_total", 0) if cron else 0)
+            costo_total = sum(f.get("cuota_total", 0) for f in cron)
+            resultados[key] = {
+                "label": label, "tcea": tcea, "van": round(van, 2),
+                "tir": tir, "cuota": round(cuota, 2), "costo_total": round(costo_total, 2)
+            }
+        except Exception as e:
+            resultados[key] = {"label": label, "error": str(e)}
+    return jsonify(resultados)
 
 @app.route("/creditos")
 @login_required
