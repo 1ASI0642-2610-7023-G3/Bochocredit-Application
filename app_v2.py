@@ -106,6 +106,11 @@ def init_db():
             tsd REAL,
             tsv REAL,
             portes REAL,
+            gastos_admin REAL DEFAULT 0.0,
+            gps REAL DEFAULT 0.0,
+            metodo_pago TEXT DEFAULT 'regular',
+            pct_cuota_final REAL DEFAULT 0.0,
+            cok REAL DEFAULT 0.0,
             cronograma TEXT,
             
             FOREIGN KEY(id_cliente) REFERENCES clientes(id),
@@ -139,6 +144,7 @@ def init_db():
             seguro_riesgo REAL NOT NULL,
             portes REAL NOT NULL,
             gastos_admin REAL NOT NULL,
+            gps REAL NOT NULL DEFAULT 0.0,
             
             saldo_final REAL NOT NULL,
             flujo REAL NOT NULL,
@@ -406,6 +412,41 @@ def calcular_tem(tipo_tasa, tasa_valor, capitalizacion, dias_tasa=360):
         # nominal_anual
         m = dias_tasa / cap_days
         return (1 + tasa / m) ** n - 1
+def es_vehiculo_bloqueado(db, id_vehiculo):
+    # Obtener simulaciones elegidas activas para el vehículo
+    rows = db.execute("""
+        SELECT creado_en, plazo_meses 
+        FROM simulaciones 
+        WHERE id_vehiculo = ? AND es_elegido = 'SI'
+    """, (id_vehiculo,)).fetchall()
+    
+    from datetime import datetime
+    import calendar
+    
+    def add_months(sourcedate, months):
+        month = sourcedate.month - 1 + months
+        year = sourcedate.year + month // 12
+        month = month % 12 + 1
+        day = min(sourcedate.day, calendar.monthrange(year, month)[1])
+        return datetime(year, month, day, sourcedate.hour, sourcedate.minute, sourcedate.second)
+
+    now = datetime.now()
+    for r in rows:
+        creado_str = r["creado_en"]
+        plazo = int(r["plazo_meses"])
+        try:
+            if len(creado_str) > 10:
+                creado_dt = datetime.strptime(creado_str, "%Y-%m-%d %H:%M:%S")
+            else:
+                creado_dt = datetime.strptime(creado_str, "%Y-%m-%d")
+        except Exception:
+            continue
+            
+        end_dt = add_months(creado_dt, plazo)
+        if now < end_dt:
+            return True, end_dt.strftime("%d/%m/%Y")
+            
+    return False, None
 
 
 # revisar por si acaso
@@ -499,8 +540,8 @@ def generar_cronograma(sf, tem, n_cuotas, gracia_tipo, gracia_meses, tsd, tsv, v
 
 
 # deprecado, borrar cuando lo migren al otro (el de abajo)
-def generar_cronograma_v2(sf, tem, n, gracia_tipo, gracia_meses, tsd, tsv, vv, portes):
-    """Clean reimplementation"""
+def generar_cronograma_v2(sf, tem, n, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin=0.0, gps=0.0):
+    """Clean reimplementation of French Method"""
     filas = []
     flujos = [sf]
 
@@ -527,17 +568,17 @@ def generar_cronograma_v2(sf, tem, n, gracia_tipo, gracia_meses, tsd, tsv, vv, p
         if gracia_tipo == "total" and k <= gracia_meses:
             amort = 0
             cuota_capital = 0
-            cuota_total = 0
+            cuota_total = seg_desgrav + seg_veh + portes + gastos_admin + gps
             saldo = s_ini * (1 + tem)
         elif gracia_tipo == "parcial" and k <= gracia_meses:
             amort = 0
             cuota_capital = interes
-            cuota_total = interes + seg_desgrav + seg_veh + portes
+            cuota_total = interes + seg_desgrav + seg_veh + portes + gastos_admin + gps
             saldo = s_ini
         else:
             amort = cuota_base - interes
             cuota_capital = cuota_base
-            cuota_total = cuota_base + seg_desgrav + seg_veh + portes
+            cuota_total = cuota_base + seg_desgrav + seg_veh + portes + gastos_admin + gps
             saldo = s_ini - amort
 
         if saldo < 0.01:
@@ -552,6 +593,8 @@ def generar_cronograma_v2(sf, tem, n, gracia_tipo, gracia_meses, tsd, tsv, vv, p
             "seg_desgrav": round(seg_desgrav, 2),
             "seg_veh": round(seg_veh, 2),
             "portes": round(portes, 2),
+            "gastos_admin": round(gastos_admin, 2),
+            "gps": round(gps, 2),
             "cuota_total": round(cuota_total, 2),
             "saldo_final": round(saldo, 2),
         })
@@ -564,18 +607,227 @@ def generar_cronograma_v2(sf, tem, n, gracia_tipo, gracia_meses, tsd, tsv, vv, p
     return filas, round(van, 2), round(tir_mensual * 100, 6), round(tcea * 100, 4)
 
 
-def generar_cronograma_compra_inteligente(sf, tem, n, gracia_tipo, gracia_meses,
-                                          tsd, tsv, vv, gastos, pct_cuota_final, cok):
-    # Método francés vencido + Compra Inteligente con cuota final y costo de oportunidad.
+def generar_cronograma_aleman(sf, tem, n, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin=0.0, gps=0.0):
+    """German Method (Constant Amortization)"""
+    filas = []
+    flujos = [sf]
+    n_activo = n - gracia_meses
 
+    if gracia_tipo == "total":
+        sc = sf * (1 + tem) ** gracia_meses
+    else:
+        sc = sf
+
+    amort_const = sc / n_activo if n_activo > 0 else 0
+    saldo = sf
+
+    for k in range(1, n+1):
+        s_ini = saldo
+        interes = s_ini * tem
+        seg_desgrav = s_ini * tsd
+        seg_veh = vv * tsv
+
+        if gracia_tipo == "total" and k <= gracia_meses:
+            amort = 0
+            cuota_capital = 0
+            cuota_total = seg_desgrav + seg_veh + portes + gastos_admin + gps
+            saldo = s_ini * (1 + tem)
+        elif gracia_tipo == "parcial" and k <= gracia_meses:
+            amort = 0
+            cuota_capital = interes
+            cuota_total = interes + seg_desgrav + seg_veh + portes + gastos_admin + gps
+            saldo = s_ini
+        else:
+            amort = amort_const
+            cuota_capital = amort + interes
+            cuota_total = cuota_capital + seg_desgrav + seg_veh + portes + gastos_admin + gps
+            saldo = s_ini - amort
+
+        if saldo < 0.01:
+            saldo = 0
+
+        filas.append({
+            "periodo": k,
+            "saldo_inicial": round(s_ini, 2),
+            "interes": round(interes, 2),
+            "amort": round(amort, 2),
+            "cuota_capital": round(cuota_capital, 2),
+            "seg_desgrav": round(seg_desgrav, 2),
+            "seg_veh": round(seg_veh, 2),
+            "portes": round(portes, 2),
+            "gastos_admin": round(gastos_admin, 2),
+            "gps": round(gps, 2),
+            "cuota_total": round(cuota_total, 2),
+            "saldo_final": round(saldo, 2),
+        })
+        flujos.append(-cuota_total)
+
+    van = sum(flujos[t] / (1+tem)**t for t in range(len(flujos)))
+    tir_mensual = calcular_tir(flujos)
+    tcea = (1 + tir_mensual) ** 12 - 1
+
+    return filas, round(van, 2), round(tir_mensual * 100, 6), round(tcea * 100, 4)
+
+
+def generar_cronograma_americano(sf, tem, n, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin=0.0, gps=0.0):
+    """American Method (Interest-only, principal paid at end)"""
     filas = []
     flujos = [sf]
 
-    # Cuotón (porcentaje del saldo financiado)
-    cuoton = sf * pct_cuota_final
+    if gracia_tipo == "total":
+        sc = sf * (1 + tem) ** gracia_meses
+    else:
+        sc = sf
+
+    saldo = sf
+
+    for k in range(1, n+1):
+        s_ini = saldo
+        interes = s_ini * tem
+        seg_desgrav = s_ini * tsd
+        seg_veh = vv * tsv
+
+        if k < n:
+            if gracia_tipo == "total" and k <= gracia_meses:
+                amort = 0
+                cuota_capital = 0
+                cuota_total = seg_desgrav + seg_veh + portes + gastos_admin + gps
+                saldo = s_ini * (1 + tem)
+            elif gracia_tipo == "parcial" and k <= gracia_meses:
+                amort = 0
+                cuota_capital = interes
+                cuota_total = interes + seg_desgrav + seg_veh + portes + gastos_admin + gps
+                saldo = s_ini
+            else:
+                amort = 0
+                cuota_capital = interes
+                cuota_total = interes + seg_desgrav + seg_veh + portes + gastos_admin + gps
+                saldo = s_ini
+        else:
+            # Last period k == n
+            amort = s_ini
+            cuota_capital = amort + interes
+            cuota_total = cuota_capital + seg_desgrav + seg_veh + portes + gastos_admin + gps
+            saldo = 0
+
+        if saldo < 0.01:
+            saldo = 0
+
+        filas.append({
+            "periodo": k,
+            "saldo_inicial": round(s_ini, 2),
+            "interes": round(interes, 2),
+            "amort": round(amort, 2),
+            "cuota_capital": round(cuota_capital, 2),
+            "seg_desgrav": round(seg_desgrav, 2),
+            "seg_veh": round(seg_veh, 2),
+            "portes": round(portes, 2),
+            "gastos_admin": round(gastos_admin, 2),
+            "gps": round(gps, 2),
+            "cuota_total": round(cuota_total, 2),
+            "saldo_final": round(saldo, 2),
+        })
+        flujos.append(-cuota_total)
+
+    van = sum(flujos[t] / (1+tem)**t for t in range(len(flujos)))
+    tir_mensual = calcular_tir(flujos)
+    tcea = (1 + tir_mensual) ** 12 - 1
+
+    return filas, round(van, 2), round(tir_mensual * 100, 6), round(tcea * 100, 4)
+
+
+def generar_cronograma_peruano(sf, tem, n, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin=0.0, gps=0.0):
+    """Peruvian Method (French method with double cuotas in July and December)"""
+    filas = []
+    flujos = [sf]
+    
+    # Calculate starting date (assume today)
+    from datetime import datetime
+    start_date = datetime.now()
+    
+    n_cuotas_list = []
+    for k in range(1, n + 1):
+        m = (start_date.month - 1 + k) % 12 + 1
+        n_cuotas_list.append(2 if m in (7, 12) else 1)
+        
+    factor_sum = 0.0
+    for k in range(gracia_meses + 1, n + 1):
+        nc_k = n_cuotas_list[k - 1]
+        factor_sum += nc_k / ((1 + tem) ** (k - gracia_meses))
+        
+    if gracia_tipo == "total":
+        sc = sf * (1 + tem) ** gracia_meses
+    else:
+        sc = sf
+        
+    anualidad = sc / factor_sum if factor_sum > 0 else 0
+    saldo = sf
+    
+    for k in range(1, n + 1):
+        s_ini = saldo
+        interes = s_ini * tem
+        seg_desgrav = s_ini * tsd
+        seg_veh = vv * tsv
+        nc_k = n_cuotas_list[k - 1]
+        
+        if gracia_tipo == "total" and k <= gracia_meses:
+            amort = 0
+            cuota_capital = 0
+            cuota_total = seg_desgrav + seg_veh + portes + gastos_admin + gps
+            saldo = s_ini * (1 + tem)
+        elif gracia_tipo == "parcial" and k <= gracia_meses:
+            amort = 0
+            cuota_capital = interes
+            cuota_total = interes + seg_desgrav + seg_veh + portes + gastos_admin + gps
+            saldo = s_ini
+        else:
+            cuota_base = anualidad * nc_k
+            amort = cuota_base - interes
+            cuota_capital = cuota_base
+            cuota_total = cuota_base + seg_desgrav + seg_veh + portes + gastos_admin + gps
+            saldo = s_ini - amort
+            
+        if saldo < 0.01:
+            saldo = 0
+            
+        filas.append({
+            "periodo": k,
+            "saldo_inicial": round(s_ini, 2),
+            "interes": round(interes, 2),
+            "amort": round(amort, 2),
+            "cuota_capital": round(cuota_capital, 2),
+            "seg_desgrav": round(seg_desgrav, 2),
+            "seg_veh": round(seg_veh, 2),
+            "portes": round(portes, 2),
+            "gastos_admin": round(gastos_admin, 2),
+            "gps": round(gps, 2),
+            "cuota_total": round(cuota_total, 2),
+            "saldo_final": round(saldo, 2),
+        })
+        flujos.append(-cuota_total)
+        
+    van = sum(flujos[t] / (1 + tem) ** t for t in range(len(flujos)))
+    tir_mensual = calcular_tir(flujos)
+    tcea = (1 + tir_mensual) ** 12 - 1
+    
+    return filas, round(van, 2), round(tir_mensual * 100, 6), round(tcea * 100, 4)
+
+
+def generar_cronograma_compra_inteligente(sf, tem, n, gracia_tipo, gracia_meses,
+                                          tsd, tsv, vv, gastos, pct_cuota_final, cok):
+    # Método francés vencido + Compra Inteligente con cuota final y costo de oportunidad.
+    filas = []
+    flujos = [sf]
+
+    # Cuotón nominal al final (porcentaje del precio del vehículo)
+    cuoton_final = vv * pct_cuota_final
+
+    # Traer el cuotón final a valor presente (capitalizando interés y desgravamen durante n+1 meses, según Excel)
+    factor = (1 + tem + tsd) ** (n + 1)
+    cuoton_pv = cuoton_final / factor
 
     # Saldo regular (para cuotas mensuales)
-    saldo_regular = sf - cuoton
+    saldo_regular = sf - cuoton_pv
 
     # Ajuste por gracia
     n_activo = n - gracia_meses
@@ -588,7 +840,7 @@ def generar_cronograma_compra_inteligente(sf, tem, n, gracia_tipo, gracia_meses,
     cuota_base = (sc * tem) / (1 - (1 + tem) ** (-n_activo)) if n_activo > 0 else 0
 
     saldo = saldo_regular
-    saldo_cf = cuoton  # saldo de la cuota final
+    saldo_cf = cuoton_pv  # saldo de la cuota final
 
     for k in range(1, n + 1):
         # Regular
@@ -598,26 +850,32 @@ def generar_cronograma_compra_inteligente(sf, tem, n, gracia_tipo, gracia_meses,
         seg_veh = vv * tsv
         portes = gastos.get("portes", 0)
         g_admin = gastos.get("gastos_admin", 0)
-        g_period = gastos.get("gastos_periodicos", 0)
+        g_period = gastos.get("gps", 0)  # GPS
 
         # Cuota final (se acumula interés y seguros, amortización=0 hasta el último periodo)
-        interes_cf = saldo_cf * tem
-        seg_desgrav_cf = saldo_cf * tsd
-        saldo_cf = saldo_cf * (1 + tem)  # se capitaliza interés
+        s_ini_cf = saldo_cf
+        interes_cf = s_ini_cf * tem
+        seg_desgrav_cf = s_ini_cf * tsd
+        # El saldo final del cuotón acumula tanto interés como seguro de desgravamen (según Excel)
+        saldo_cf = s_ini_cf + interes_cf + seg_desgrav_cf
 
         if gracia_tipo == "total" and k <= gracia_meses:
             amort = 0
-            cuota_total = 0
+            cuota_capital = 0
+            # En gracia total se pagan seguros y comisiones fijas (conteo ordinario/Excel)
+            cuota_total = seg_desgrav + seg_veh + portes + g_admin + g_period
             saldo = s_ini * (1 + tem)
             pg = "T"
         elif gracia_tipo == "parcial" and k <= gracia_meses:
             amort = 0
+            cuota_capital = interes
             cuota_total = interes + seg_desgrav + seg_veh + portes + g_admin + g_period
             saldo = s_ini
             pg = "P"
         else:
             amort = cuota_base - interes
-            cuota_total = cuota_base + seg_desgrav + seg_veh + portes + g_admin + g_period
+            cuota_capital = cuota_base + seg_desgrav
+            cuota_total = cuota_capital + seg_veh + portes + g_admin + g_period
             saldo = s_ini - amort
             pg = "S"
 
@@ -626,54 +884,62 @@ def generar_cronograma_compra_inteligente(sf, tem, n, gracia_tipo, gracia_meses,
 
         filas.append({
             "periodo": k,
-            "PG": pg,
+            "pg": pg,
 
             # Cronograma cuota final
-            "saldo_inicial_cf": round(cuoton, 4),
+            "saldo_inicial_cf": round(s_ini_cf, 4),
             "interes_cf": round(interes_cf, 4),
-            "amortizacion_cf": 0,
-            "seguro_desgravamen_cf": round(seg_desgrav_cf, 4),
+            "amort_cf": 0.0,
+            "seg_desgrav_cf": round(seg_desgrav_cf, 4),
             "saldo_final_cf": round(saldo_cf, 4),
 
             # Cronograma regular
             "saldo_inicial": round(s_ini, 4),
             "interes": round(interes, 4),
-            "amortizacion": round(amort, 4),
-            "seguro_desgravamen": round(seg_desgrav, 4),
-            "seguro_riesgo": round(seg_veh, 4),
+            "amort": round(amort, 4),
+            "cuota_capital": round(cuota_capital, 4),
+            "seg_desgrav": round(seg_desgrav, 4),
+            "seg_veh": round(seg_veh, 4),
             "portes": round(portes, 4),
             "gastos_admin": round(g_admin, 4),
-            "gastos_periodicos": round(g_period, 4),
+            "gps": round(g_period, 4),
             "cuota_total": round(cuota_total, 4),
             "saldo_final": round(saldo, 4),
         })
         flujos.append(-cuota_total)
 
     # Cuotón final (periodo n+1)
+    seg_veh_n1 = vv * tsv
+    portes_n1 = gastos.get("portes", 0)
+    g_admin_n1 = gastos.get("gastos_admin", 0)
+    gps_n1 = gastos.get("gps", 0)
+    cuota_total_n1 = saldo_cf + seg_veh_n1 + portes_n1 + g_admin_n1 + gps_n1
+
     filas.append({
         "periodo": n + 1,
-        "PG": "S",
+        "pg": "S",
 
         # Cronograma cuota final (se paga todo aquí)
         "saldo_inicial_cf": round(saldo_cf, 4),
-        "interes_cf": 0,
-        "amortizacion_cf": round(saldo_cf, 4),
-        "seguro_desgravamen_cf": 0,
-        "saldo_final_cf": 0,
+        "interes_cf": 0.0,
+        "amort_cf": round(saldo_cf, 4),
+        "seg_desgrav_cf": 0.0,
+        "saldo_final_cf": 0.0,
 
         # Cronograma regular (no aplica)
-        "saldo_inicial": 0,
-        "interes": 0,
-        "amortizacion": 0,
-        "seguro_desgravamen": 0,
-        "seguro_riesgo": 0,
-        "portes": 0,
-        "gastos_admin": 0,
-        "gastos_periodicos": 0,
-        "cuota_total": round(saldo_cf, 4),
-        "saldo_final": 0,
+        "saldo_inicial": 0.0,
+        "interes": 0.0,
+        "amort": 0.0,
+        "cuota_capital": 0.0,
+        "seg_desgrav": 0.0,
+        "seg_veh": round(seg_veh_n1, 4),
+        "portes": round(portes_n1, 4),
+        "gastos_admin": round(g_admin_n1, 4),
+        "gps": round(gps_n1, 4),
+        "cuota_total": round(cuota_total_n1, 4),
+        "saldo_final": 0.0,
     })
-    flujos.append(-saldo_cf)
+    flujos.append(-cuota_total_n1)
 
     # Conversión del COK anual a TEM
     tem_cok = (1 + cok) ** (1 / 12) - 1
@@ -705,6 +971,13 @@ def credito_nuevo():
         f = request.form
         cid = int(f["cliente_id"])
         vid = int(f["vehiculo_id"])
+        
+        # Verificar si el vehículo está bloqueado
+        bloqueado, bloqueado_hasta = es_vehiculo_bloqueado(db, vid)
+        if bloqueado:
+            flash(f"El vehículo seleccionado está bloqueado por un plan de pagos activo hasta el {bloqueado_hasta}.", "danger")
+            return redirect(url_for("credito_nuevo"))
+
         vv = float(f["precio_vehiculo"])
         ci_pct = float(f["cuota_inicial_pct"])
         ci_monto = vv * ci_pct / 100
@@ -719,11 +992,39 @@ def credito_nuevo():
         tsd = float(f["tsd"]) / 100
         tsv = float(f["tsv"]) / 100
         portes = float(f["portes"])
+        gastos_admin = float(f.get("gastos_admin", 0.0))
+        gps = float(f.get("gps", 0.0))
         moneda = f["moneda"]
+        
+        metodo_pago = f.get("metodo_pago", "regular")
+        pct_cuota_final = float(f.get("pct_cuota_final", 40)) / 100
+        cok = float(f.get("cok", 50)) / 100
 
-        cronograma, van, tir, tcea = generar_cronograma_v2(
-            sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes
-        )
+        if metodo_pago == "compra_inteligente":
+            gastos = {
+                "portes": portes,
+                "gastos_admin": gastos_admin,
+                "gps": gps
+            }
+            cronograma, van, tir, tcea = generar_cronograma_compra_inteligente(
+                sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, gastos, pct_cuota_final, cok
+            )
+        elif metodo_pago == "aleman":
+            cronograma, van, tir, tcea = generar_cronograma_aleman(
+                sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+            )
+        elif metodo_pago == "americano":
+            cronograma, van, tir, tcea = generar_cronograma_americano(
+                sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+            )
+        elif metodo_pago == "peruano":
+            cronograma, van, tir, tcea = generar_cronograma_peruano(
+                sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+            )
+        else:
+            cronograma, van, tir, tcea = generar_cronograma_v2(
+                sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+            )
 
         cursor = db.execute("""
             INSERT INTO simulaciones(
@@ -732,14 +1033,16 @@ def credito_nuevo():
                 tipo_moneda, es_elegido, id_usuario, id_cliente, id_vehiculo,
                 id_banco, id_tasa, moneda, precio_vehiculo, cuota_inicial_pct,
                 cuota_inicial_monto, tipo_tasa, tasa_valor, capitalizacion, tem,
-                gracia_tipo, gracia_meses, tsd, tsv, portes, cronograma
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                gracia_tipo, gracia_meses, tsd, tsv, portes, gastos_admin, gps,
+                metodo_pago, pct_cuota_final, cok, cronograma
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             tcea, van, tir, sf, plazo, plazo,
-            ci_pct, gracia_tipo, gracia_meses, moneda, 'SI',
+            ci_pct, gracia_tipo, gracia_meses, moneda, 'NO',
             session["user_id"], cid, vid, 1, 1,
             moneda, vv, ci_pct, ci_monto, tipo_tasa, tasa_valor, cap, tem,
-            gracia_tipo, gracia_meses, tsd*100, tsv*100, portes, json.dumps(cronograma)
+            gracia_tipo, gracia_meses, tsd*100, tsv*100, portes, gastos_admin, gps,
+            metodo_pago, pct_cuota_final, cok, json.dumps(cronograma)
         ))
         sim_id = cursor.lastrowid
 
@@ -749,19 +1052,26 @@ def credito_nuevo():
                     num_cuota, tipo_tasa, tasa_interes, dias_capitalizacion, dias_tasa,
                     tipo_gracia, esta_pagado, saldo_inicial_cf, interes_cf, amortizacion_cf,
                     seguro_desgravamen_cf, saldo_final_cf, saldo_inicial, interes, amortizacion,
-                    seguro_desgravamen, seguro_riesgo, portes, gastos_admin, saldo_final, flujo,
+                    seguro_desgravamen, seguro_riesgo, portes, gastos_admin, gps, saldo_final, flujo,
                     id_simulacion
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 row["periodo"], tipo_tasa, tasa_valor, 30, 360,
-                gracia_tipo, 0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                gracia_tipo, 0,
+                row.get("saldo_inicial_cf", 0.0),
+                row.get("interes_cf", 0.0),
+                row.get("amort_cf", 0.0),
+                row.get("seg_desgrav_cf", 0.0),
+                row.get("saldo_final_cf", 0.0),
                 row["saldo_inicial"], row["interes"], row["amort"],
-                row["seg_desgrav"], row["seg_veh"], row["portes"], 0.0,
+                row["seg_desgrav"], row["seg_veh"], row["portes"],
+                row.get("gastos_admin", 0.0),
+                row.get("gps", 0.0),
                 row["saldo_final"], -row["cuota_total"], sim_id
             ))
         db.commit()
-        flash("Crédito calculado y guardado.", "success")
-        return redirect(url_for("creditos"))
+        flash("Simulación calculada y guardada.", "success")
+        return redirect(url_for("credito_detalle", crid=sim_id))
 
     return render_template("credito_form.html", clientes=clientes, titulo="Nueva Oferta de Crédito")
 
@@ -770,7 +1080,14 @@ def credito_nuevo():
 def api_vehiculos(cid):
     db = get_db()
     rows = db.execute("SELECT id, marca||' '||modelo as nombre, precio FROM vehiculos").fetchall()
-    return jsonify([dict(r) for r in rows])
+    res = []
+    for r in rows:
+        d = dict(r)
+        bloqueado, bloqueado_hasta = es_vehiculo_bloqueado(db, d["id"])
+        d["bloqueado"] = bloqueado
+        d["bloqueado_hasta"] = bloqueado_hasta
+        res.append(d)
+    return jsonify(res)
 
 @app.route("/api/calcular", methods=["POST"])
 @login_required
@@ -787,11 +1104,50 @@ def api_calcular():
     tsd = float(d["tsd"]) / 100
     tsv = float(d["tsv"]) / 100
     portes = float(d["portes"])
-
-    cronograma, van, tir, tcea = generar_cronograma_v2(
-        sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes
-    )
+    
+    metodo_pago = d.get("metodo_pago", "regular")
+    
+    gastos_admin = float(d.get("gastos_admin", 0.0))
+    gps = float(d.get("gps", 0.0))
+    
+    if metodo_pago == "compra_inteligente":
+        pct_cuota_final = float(d.get("pct_cuota_final", 0.40))
+        cok = float(d.get("cok", 0.50))
+        gastos = {
+            "portes": portes,
+            "gastos_admin": gastos_admin,
+            "gps": gps
+        }
+        cronograma, van, tir, tcea = generar_cronograma_compra_inteligente(
+            sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, gastos, pct_cuota_final, cok
+        )
+    elif metodo_pago == "aleman":
+        cronograma, van, tir, tcea = generar_cronograma_aleman(
+            sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+        )
+    elif metodo_pago == "americano":
+        cronograma, van, tir, tcea = generar_cronograma_americano(
+            sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+        )
+    elif metodo_pago == "peruano":
+        cronograma, van, tir, tcea = generar_cronograma_peruano(
+            sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+        )
+    else:
+        cronograma, van, tir, tcea = generar_cronograma_v2(
+            sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+        )
+        
     tea = round(((1+tem)**12 - 1)*100, 4)
+    
+    cuota_regular = 0
+    if cronograma:
+        normal_cuotas = [f for f in cronograma if f.get("pg", "S") == "S" and f["periodo"] <= plazo]
+        if normal_cuotas:
+            cuota_regular = normal_cuotas[0].get("cuota_capital", normal_cuotas[0].get("cuota_total", 0))
+        else:
+            cuota_regular = cronograma[0].get("cuota_capital", cronograma[0].get("cuota_total", 0))
+
     return jsonify({
         "sf": round(sf, 2),
         "ci_monto": round(ci_monto, 2),
@@ -800,6 +1156,7 @@ def api_calcular():
         "van": van,
         "tir": tir,
         "tcea": tcea,
+        "cuota_regular": round(cuota_regular, 2),
         "cronograma": cronograma
     })
 
@@ -850,6 +1207,27 @@ def credito_detalle(crid):
     cron = json.loads(credito["cronograma"])
     return render_template("credito_detalle.html", credito=credito, cronograma=cron)
 
+@app.route("/creditos/<int:crid>/elegir", methods=["POST"])
+@login_required
+def credito_elegir(crid):
+    db = get_db()
+    sim = db.execute("SELECT id_vehiculo FROM simulaciones WHERE id=?", (crid,)).fetchone()
+    if not sim:
+        flash("Simulación no encontrada.", "danger")
+        return redirect(url_for("creditos"))
+    
+    vid = sim["id_vehiculo"]
+    
+    # Desmarcar cualquier otra simulación elegida para este mismo carro
+    db.execute("UPDATE simulaciones SET es_elegido='NO' WHERE id_vehiculo=?", (vid,))
+    
+    # Marcar esta simulación como elegida
+    db.execute("UPDATE simulaciones SET es_elegido='SI' WHERE id=?", (crid,))
+    db.commit()
+    
+    flash("Plan de pagos elegido y activado correctamente para este vehículo.", "success")
+    return redirect(url_for("credito_detalle", crid=crid))
+
 @app.route("/creditos/<int:crid>/editar", methods=["GET","POST"])
 @login_required
 def credito_editar(crid):
@@ -872,6 +1250,14 @@ def credito_editar(crid):
         f = request.form
         cid = int(f["cliente_id"])
         vid = int(f["vehiculo_id"])
+        
+        # Verificar si el vehículo está bloqueado (solo si cambió el vehículo)
+        if vid != credito["id_vehiculo"]:
+            bloqueado, bloqueado_hasta = es_vehiculo_bloqueado(db, vid)
+            if bloqueado:
+                flash(f"El vehículo seleccionado está bloqueado por un plan de pagos activo hasta el {bloqueado_hasta}.", "danger")
+                return redirect(url_for("credito_editar", crid=crid))
+
         vv = float(f["precio_vehiculo"])
         ci_pct = float(f["cuota_inicial_pct"])
         ci_monto = vv * ci_pct / 100
@@ -886,11 +1272,39 @@ def credito_editar(crid):
         tsd = float(f["tsd"]) / 100
         tsv = float(f["tsv"]) / 100
         portes = float(f["portes"])
+        gastos_admin = float(f.get("gastos_admin", 0.0))
+        gps = float(f.get("gps", 0.0))
         moneda = f["moneda"]
+        
+        metodo_pago = f.get("metodo_pago", "regular")
+        pct_cuota_final = float(f.get("pct_cuota_final", 40)) / 100
+        cok = float(f.get("cok", 50)) / 100
 
-        cronograma, van, tir, tcea = generar_cronograma_v2(
-            sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes
-        )
+        if metodo_pago == "compra_inteligente":
+            gastos = {
+                "portes": portes,
+                "gastos_admin": gastos_admin,
+                "gps": gps
+            }
+            cronograma, van, tir, tcea = generar_cronograma_compra_inteligente(
+                sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, gastos, pct_cuota_final, cok
+            )
+        elif metodo_pago == "aleman":
+            cronograma, van, tir, tcea = generar_cronograma_aleman(
+                sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+            )
+        elif metodo_pago == "americano":
+            cronograma, van, tir, tcea = generar_cronograma_americano(
+                sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+            )
+        elif metodo_pago == "peruano":
+            cronograma, van, tir, tcea = generar_cronograma_peruano(
+                sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+            )
+        else:
+            cronograma, van, tir, tcea = generar_cronograma_v2(
+                sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes, gastos_admin, gps
+            )
         
         db.execute("""
             UPDATE simulaciones SET
@@ -899,13 +1313,15 @@ def credito_editar(crid):
                 tipo_moneda=?, id_cliente=?, id_vehiculo=?, moneda=?, precio_vehiculo=?,
                 cuota_inicial_pct=?, cuota_inicial_monto=?, tipo_tasa=?, tasa_valor=?,
                 capitalizacion=?, tem=?, gracia_tipo=?, gracia_meses=?, tsd=?, tsv=?,
-                portes=?, cronograma=?
+                portes=?, gastos_admin=?, gps=?, metodo_pago=?, pct_cuota_final=?, cok=?, 
+                cronograma=?
             WHERE id=?
         """, (
             tcea, van, tir, sf, plazo, plazo,
             ci_pct, gracia_tipo, gracia_meses, moneda, cid, vid, moneda, vv,
             ci_pct, ci_monto, tipo_tasa, tasa_valor, cap, tem,
-            gracia_tipo, gracia_meses, tsd*100, tsv*100, portes, json.dumps(cronograma),
+            gracia_tipo, gracia_meses, tsd*100, tsv*100, portes, gastos_admin, gps,
+            metodo_pago, pct_cuota_final, cok, json.dumps(cronograma),
             crid
         ))
 
@@ -916,18 +1332,25 @@ def credito_editar(crid):
                     num_cuota, tipo_tasa, tasa_interes, dias_capitalizacion, dias_tasa,
                     tipo_gracia, esta_pagado, saldo_inicial_cf, interes_cf, amortizacion_cf,
                     seguro_desgravamen_cf, saldo_final_cf, saldo_inicial, interes, amortizacion,
-                    seguro_desgravamen, seguro_riesgo, portes, gastos_admin, saldo_final, flujo,
+                    seguro_desgravamen, seguro_riesgo, portes, gastos_admin, gps, saldo_final, flujo,
                     id_simulacion
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 row["periodo"], tipo_tasa, tasa_valor, 30, 360,
-                gracia_tipo, 0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                gracia_tipo, 0,
+                row.get("saldo_inicial_cf", 0.0),
+                row.get("interes_cf", 0.0),
+                row.get("amort_cf", 0.0),
+                row.get("seg_desgrav_cf", 0.0),
+                row.get("saldo_final_cf", 0.0),
                 row["saldo_inicial"], row["interes"], row["amort"],
-                row["seg_desgrav"], row["seg_veh"], row["portes"], 0.0,
+                row["seg_desgrav"], row["seg_veh"], row["portes"],
+                row.get("gastos_admin", 0.0),
+                row.get("gps", 0.0),
                 row["saldo_final"], -row["cuota_total"], crid
             ))
         db.commit()
-        flash("Crédito recalculado y actualizado.", "success")
+        flash("Simulación recalculada y actualizada.", "success")
         return redirect(url_for("credito_detalle", crid=crid))
 
     return render_template("credito_form.html", clientes=clientes, credito=credito, titulo="Editar Crédito")

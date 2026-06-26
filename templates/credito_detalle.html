@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Crédito #{{ credito.id }} — BochoCredit{% endblock %}
+{% block title %}Simulación #{{ credito.id }} — BochoCredit{% endblock %}
 {% block page_title %}Cronograma de Pagos #{{ credito.id }}{% endblock %}
 {% block content %}
 <!-- Top indicators -->
@@ -60,6 +60,23 @@
       <div class="row g-1" style="font-size:.82rem">
         <div class="col-6">Moneda</div><div class="col-6"><strong>{{ "Soles S/" if credito.moneda=='soles' else "Dólares $" }}</strong></div>
         <div class="col-6">Cuota Inicial</div><div class="col-6"><strong>{{ credito.cuota_inicial_pct }}%</strong></div>
+        <div class="col-6">Método Amort.</div><div class="col-6"><strong>
+          {% if credito.metodo_pago == 'compra_inteligente' %}
+            Compra Inteligente
+          {% elif credito.metodo_pago == 'aleman' %}
+            Método Alemán
+          {% elif credito.metodo_pago == 'americano' %}
+            Método Americano
+          {% elif credito.metodo_pago == 'peruano' %}
+            Método Peruano
+          {% else %}
+            Método Francés
+          {% endif %}
+        </strong></div>
+        {% if credito.metodo_pago=='compra_inteligente' %}
+        <div class="col-6">Cuota Final</div><div class="col-6"><strong>{{ (credito.pct_cuota_final * 100)|round(2) }}%</strong></div>
+        <div class="col-6">Tasa COK Anual</div><div class="col-6"><strong>{{ (credito.cok * 100)|round(2) }}%</strong></div>
+        {% endif %}
         <div class="col-6">Tipo Tasa</div><div class="col-6"><strong>{{ credito.tipo_tasa.replace('_',' ').upper() }}</strong></div>
         <div class="col-6">Tasa</div><div class="col-6"><strong>{{ credito.tasa_valor }}%</strong></div>
         <div class="col-6">TEM</div><div class="col-6"><strong>{{ "%.6f"|format(credito.tem*100) }}%</strong></div>
@@ -70,7 +87,19 @@
 </div>
 
 <!-- Actions -->
-<div class="d-flex gap-2 mb-3">
+<div class="d-flex gap-2 mb-3 align-items-center">
+  {% if credito.es_elegido == 'NO' %}
+  <form action="{{ url_for('credito_elegir', crid=credito.id) }}" method="POST" class="m-0">
+    <button type="submit" class="btn btn-bc-gold px-4">
+      <i class="bi bi-check-circle me-1"></i> Elegir Plan de Pagos
+    </button>
+  </form>
+  {% else %}
+  <button class="btn btn-success px-4" disabled>
+    <i class="bi bi-check-circle-fill me-1"></i> Plan Elegido y Activo
+  </button>
+  {% endif %}
+  
   <a href="{{ url_for('credito_editar', crid=credito.id) }}" class="btn btn-bc-primary px-4">
     <i class="bi bi-pencil me-1"></i> Editar / Recalcular
   </a>
@@ -79,9 +108,86 @@
 </div>
 
 <!-- Cronograma -->
+{% if credito.metodo_pago == 'compra_inteligente' %}
 <div class="bc-table">
   <div class="px-3 py-2 d-flex align-items-center justify-content-between" style="border-bottom:1px solid #f0f4ff">
-    <span style="font-weight:700;color:#0b1e3d;font-size:.92rem"><i class="bi bi-table me-2" style="color:#1a56db"></i>Cronograma de Pagos — Método Francés Vencido Ordinario</span>
+    <span style="font-weight:700;color:#0b1e3d;font-size:.92rem"><i class="bi bi-table me-2" style="color:#1a56db"></i>Cronograma de Pagos — Compra Inteligente</span>
+    <span style="font-size:.75rem;color:#9ca3af">{{ cronograma|length }} períodos</span>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="table cron-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>P.G.</th>
+          <th>S.I. Cuota Final</th>
+          <th>Int. Cuota Final</th>
+          <th>Seg.Desg. Cuota Final</th>
+          <th>S.F. Cuota Final</th>
+          <th>S.I. Regular</th>
+          <th>Interés</th>
+          <th>Cuota Regular</th>
+          <th>Amort.</th>
+          <th>Seg. Desgrav.</th>
+          <th>Seg. Vehicular</th>
+          <th>GPS</th>
+          <th>Portes</th>
+          <th>Gasto Admin</th>
+          <th>Cuota Total</th>
+          <th>Saldo Final</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in cronograma %}
+        <tr class="{% if f.pg == 'T' or f.pg == 'P' %}grace-row{% endif %}">
+          <td>{{ f.periodo }}</td>
+          <td><span class="badge {% if f.pg=='T' %}bg-danger{% elif f.pg=='P' %}bg-warning{% else %}bg-success{% endif %}" style="font-size:.65rem">{{ f.pg }}</span></td>
+          <td>{{ "{:,.2f}".format(f.saldo_inicial_cf) }}</td>
+          <td>{{ "{:,.2f}".format(f.interes_cf) }}</td>
+          <td>{{ "{:,.2f}".format(f.seg_desgrav_cf) }}</td>
+          <td>{{ "{:,.2f}".format(f.saldo_final_cf) }}</td>
+          <td>{{ "{:,.2f}".format(f.saldo_inicial) }}</td>
+          <td>{{ "{:,.2f}".format(f.interes) }}</td>
+          <td>{{ "{:,.2f}".format(f.cuota_capital) }}</td>
+          <td>{{ "{:,.2f}".format(f.amort) }}</td>
+          <td>{{ "{:,.2f}".format(f.seg_desgrav) }}</td>
+          <td>{{ "{:,.2f}".format(f.seg_veh) }}</td>
+          <td>{{ "{:,.2f}".format(f.gps) }}</td>
+          <td>{{ "{:,.2f}".format(f.portes) }}</td>
+          <td>{{ "{:,.2f}".format(f.gastos_admin) }}</td>
+          <td><strong>{{ "{:,.2f}".format(f.cuota_total) }}</strong></td>
+          <td>{{ "{:,.2f}".format(f.saldo_final) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:#f0f4ff;font-weight:700">
+          <td>TOTAL</td>
+          <td>—</td>
+          <td>—</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='interes_cf')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='seg_desgrav_cf')) }}</td>
+          <td>—</td>
+          <td>—</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='interes')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='cuota_capital')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='amort')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='seg_desgrav')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='seg_veh')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='gps')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='portes')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='gastos_admin')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='cuota_total')) }}</td>
+          <td>—</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="bc-table">
+  <div class="px-3 py-2 d-flex align-items-center justify-content-between" style="border-bottom:1px solid #f0f4ff">
+    <span style="font-weight:700;color:#0b1e3d;font-size:.92rem"><i class="bi bi-table me-2" style="color:#1a56db"></i>Cronograma de Pagos — Método Francés Regular</span>
     <span style="font-size:.75rem;color:#9ca3af">{{ cronograma|length }} períodos</span>
   </div>
   <div style="overflow-x:auto">
@@ -133,6 +239,7 @@
     </table>
   </div>
 </div>
+{% endif %}
 
 {% if credito.gracia_tipo != 'ninguno' %}
 <div class="mt-2" style="font-size:.78rem;color:#d97706"><i class="bi bi-info-circle me-1"></i> Las filas amarillas corresponden al período de gracia <strong>{{ credito.gracia_tipo }}</strong>.</div>

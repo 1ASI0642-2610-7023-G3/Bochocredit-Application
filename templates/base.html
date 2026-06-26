@@ -146,11 +146,11 @@
     <a href="{{ url_for('vehiculos') }}" class="{% if 'vehiculo' in request.endpoint %}active{% endif %}">
       <i class="bi bi-car-front"></i> Vehículos
     </a>
-    <a href="{{ url_for('creditos') }}" class="{% if 'credito' in request.endpoint %}active{% endif %}">
+    <a href="{{ url_for('creditos') }}" class="{% if request.endpoint == 'creditos' or request.endpoint == 'credito_detalle' or request.endpoint == 'credito_editar' or request.endpoint == 'credito_elegir' %}active{% endif %}">
       <i class="bi bi-file-earmark-text"></i> Créditos
     </a>
     <div class="nav-section">Acciones</div>
-    <a href="{{ url_for('credito_nuevo') }}">
+    <a href="{{ url_for('credito_nuevo') }}" class="{% if request.endpoint == 'credito_nuevo' %}active{% endif %}">
       <i class="bi bi-calculator"></i> Nueva Oferta
     </a>
   </nav>
