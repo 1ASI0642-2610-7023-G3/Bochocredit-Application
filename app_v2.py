@@ -17,6 +17,13 @@ def get_db():
 
 def init_db():
     with get_db() as db:
+        # Clean recreate tables that might have wrong schemas or are empty and need seeding
+        db.executescript("""
+        DROP TABLE IF EXISTS simulaciones;
+        DROP TABLE IF EXISTS pagos;
+        DROP TABLE IF EXISTS usuarios;
+        DROP TABLE IF EXISTS roles;
+        """)
         db.executescript("""
         pragma foreign_keys = ON;
         CREATE TABLE IF NOT EXISTS roles (
@@ -55,7 +62,7 @@ def init_db():
             nombre TEXT NOT NULL,
             razon_social TEXT NOT NULL,
             ruc TEXT NOT NULL,
-            direccion INTEGER NOT NULL,
+            direccion TEXT NOT NULL,
             activo INTEGER NOT NULL DEFAULT 1
         );
         CREATE TABLE IF NOT EXISTS tasas_interes (
@@ -70,14 +77,14 @@ def init_db():
             tcea REAL NOT NULL,
             van REAL NOT NULL,
             tir REAL NOT NULL,
-            saldo_financiado INTEGER NOT NULL,
+            saldo_financiado REAL NOT NULL,
             
             plazo_meses INTEGER NOT NULL,
             cantidad_cuotas INTEGER NOT NULL,
             porc_cuota_inicial REAL NOT NULL,
             tipo_periodo_gracia TEXT NOT NULL,
             periodo_gracia_meses REAL NOT NULL DEFAULT 0,
-            tipo_moneda REAL NOT NULL,
+            tipo_moneda TEXT NOT NULL,
             es_elegido TEXT NOT NULL DEFAULT 'NO',
             creado_en TEXT DEFAULT (datetime('now','localtime')),
             id_usuario INTEGER NOT NULL,
@@ -85,6 +92,22 @@ def init_db():
             id_vehiculo INTEGER NOT NULL,
             id_banco INTEGER NOT NULL,
             id_tasa INTEGER NOT NULL,
+            
+            moneda TEXT,
+            precio_vehiculo REAL,
+            cuota_inicial_pct REAL,
+            cuota_inicial_monto REAL,
+            tipo_tasa TEXT,
+            tasa_valor REAL,
+            capitalizacion TEXT,
+            tem REAL,
+            gracia_tipo TEXT,
+            gracia_meses INTEGER,
+            tsd REAL,
+            tsv REAL,
+            portes REAL,
+            cronograma TEXT,
+            
             FOREIGN KEY(id_cliente) REFERENCES clientes(id),
             FOREIGN KEY(id_usuario) REFERENCES usuarios(id),
             FOREIGN KEY(id_vehiculo) REFERENCES vehiculos(id),
@@ -123,19 +146,19 @@ def init_db():
             FOREIGN KEY(id_simulacion) REFERENCES simulaciones(id)
         );
         """)
-        # seed admin user
+        # seed data
         try:
-            db.execute("INSERT INTO usuarios(nombre_rol) VALUES(?)",
-                ("ADMIN"))
+            db.execute("INSERT OR IGNORE INTO roles(id, nombre_rol) VALUES(?,?)", (1, "ADMIN"))
+            db.execute("INSERT OR IGNORE INTO roles(id, nombre_rol) VALUES(?,?)", (2, "USER"))
+            db.execute("INSERT OR IGNORE INTO usuarios(id, username, password, nombre_completo, email, id_rol) VALUES(?,?,?,?,?,?)",
+                (1, "admin", generate_password_hash("admin123"), "Administrador", "admin@bochocredit.com", 1))
+            db.execute("INSERT OR IGNORE INTO bancos(id, nombre, razon_social, ruc, direccion, activo) VALUES(?,?,?,?,?,?)",
+                (1, "Banco General", "Banco General S.A.", "20123456789", "Av. Principal 123", 1))
+            db.execute("INSERT OR IGNORE INTO tasas_interes(id, tipo_tasa, tasa_interes, dias_capitalizacion, dias_tasa) VALUES(?,?,?,?,?)",
+                (1, "efectiva_anual", 15.0, 30, 360))
             db.commit()
-            db.execute("INSERT INTO usuarios(nombre_rol) VALUES(?)",
-                ("USER"))
-            db.commit()
-            db.execute("INSERT INTO usuarios(username,password,nombre_completo,id_rol) VALUES(?,?,?,?)",
-                ("admin", generate_password_hash("admin123"), "Administrador", 1))
-            db.commit()
-        except:
-            pass
+        except Exception as e:
+            print("Error seeding database:", e)
 
 # ─────────────────────────────────────────────
 # AUTH
@@ -185,7 +208,7 @@ def dashboard():
     }
     recientes = db.execute("""
         SELECT sim.id, REPLACE(cl.nombre_completo, ';', ' ') as cliente,
-               sim.tipo_moneda, sim.saldo_financiado, sim.tcea, sim.creado_en
+               sim.moneda, sim.saldo_financiado, sim.tcea, sim.creado_en as created_at
         FROM simulaciones sim JOIN clientes cl ON sim.id_cliente = cl.id
         WHERE es_elegido = 'SI'
         ORDER BY sim.creado_en DESC LIMIT 5
@@ -227,12 +250,27 @@ def cliente_editar(cid):
         return redirect(url_for("clientes"))
     if request.method == "POST":
         f = request.form
-        db.execute("UPDATE clientes SET nombres=?,apellidos=?,dni=?,telefono=?,email=?,direccion=? WHERE id=?",
-            (f["nombres"], f["apellidos"], f["dni"], f["telefono"], f["email"], f["direccion"], cid))
+        nombre_completo = f["nombres"] + ';' + f["apellidos"]
+        db.execute("UPDATE clientes SET nombre_completo=?,dni=?,telefono=?,email=?,direccion=? WHERE id=?",
+            (nombre_completo, f["dni"], f["telefono"], f["email"], f["direccion"], cid))
         db.commit()
         flash("Cliente actualizado.", "success")
         return redirect(url_for("clientes"))
-    return render_template("cliente_form.html", cliente=cliente, titulo="Editar Cliente")
+    
+    # Convert Row to dict and unpack nombres/apellidos for the template
+    cliente_dict = dict(cliente)
+    nombres = ""
+    apellidos = ""
+    if cliente["nombre_completo"] and ";" in cliente["nombre_completo"]:
+        parts = cliente["nombre_completo"].split(";")
+        nombres = parts[0]
+        apellidos = parts[1] if len(parts) > 1 else ""
+    else:
+        nombres = cliente["nombre_completo"] or ""
+    cliente_dict["nombres"] = nombres
+    cliente_dict["apellidos"] = apellidos
+    
+    return render_template("cliente_form.html", cliente=cliente_dict, titulo="Editar Cliente")
 
 @app.route("/clientes/<int:cid>/eliminar", methods=["POST"])
 @login_required
@@ -248,14 +286,37 @@ def cliente_eliminar(cid):
 def cliente_detalle(cid):
     db = get_db()
     cliente = db.execute("SELECT * FROM clientes WHERE id=?", (cid,)).fetchone()
-    vehiculos = db.execute("SELECT * FROM vehiculos WHERE cliente_id=?", (cid,)).fetchall()
-    creditos = db.execute("""
-        SELECT cr.*, v.marca||' '||v.modelo as vehiculo
-        FROM creditos cr JOIN vehiculos v ON cr.vehiculo_id=v.id
-        WHERE cr.cliente_id=?
-        ORDER BY cr.created_at DESC
+    if not cliente:
+        return redirect(url_for("clientes"))
+    
+    cliente_dict = dict(cliente)
+    nombres = ""
+    apellidos = ""
+    if cliente["nombre_completo"] and ";" in cliente["nombre_completo"]:
+        parts = cliente["nombre_completo"].split(";")
+        nombres = parts[0]
+        apellidos = parts[1] if len(parts) > 1 else ""
+    else:
+        nombres = cliente["nombre_completo"] or ""
+    cliente_dict["nombres"] = nombres
+    cliente_dict["apellidos"] = apellidos
+
+    vehiculos = db.execute("""
+        SELECT DISTINCT v.*
+        FROM vehiculos v
+        JOIN simulaciones sim ON sim.id_vehiculo = v.id
+        WHERE sim.id_cliente = ?
     """, (cid,)).fetchall()
-    return render_template("cliente_detalle.html", cliente=cliente, vehiculos=vehiculos, creditos=creditos)
+
+    creditos = db.execute("""
+        SELECT sim.id, v.marca||' '||v.modelo as vehiculo,
+               sim.moneda, sim.saldo_financiado, sim.tcea
+        FROM simulaciones sim
+        JOIN vehiculos v ON sim.id_vehiculo = v.id
+        WHERE sim.id_cliente = ?
+        ORDER BY sim.creado_en DESC
+    """, (cid,)).fetchall()
+    return render_template("cliente_detalle.html", cliente=cliente_dict, vehiculos=vehiculos, creditos=creditos)
 
 
 
@@ -307,7 +368,7 @@ def vehiculo_editar(vid):
         db.commit()
         flash("Vehículo actualizado.", "success")
         return redirect(url_for("vehiculos"))
-    return render_template("vehiculo_form.html", vehiculo=vehiculo, clientes=clientes, titulo="Editar Vehículo")
+    return render_template("vehiculo_form.html", vehiculo=vehiculo, titulo="Editar Vehículo")
 
 
 
@@ -315,14 +376,35 @@ def vehiculo_editar(vid):
 # ─────────────────────────────────────────────
 # CÁLCULO FINANCIERO
 # ─────────────────────────────────────────────
-def calcular_tem(tipo_tasa, tasa_valor, capitalizacion, dias_tasa):
+def calcular_tem(tipo_tasa, tasa_valor, capitalizacion, dias_tasa=360):
     tasa = tasa_valor / 100
-    n = 30 / capitalizacion
-
-    if 'efectiva' in tipo_tasa:
-        return (1 + tasa) ** n - 1
+    
+    # Map capitalizacion string to days if it's a string
+    cap_days = 30
+    if isinstance(capitalizacion, str):
+        cap_map = {
+            "diaria": 1,
+            "quincenal": 15,
+            "mensual": 30,
+            "bimestral": 60,
+            "trimestral": 90,
+            "cuatrimestral": 120,
+            "semestral": 180,
+            "anual": 360
+        }
+        cap_days = cap_map.get(capitalizacion, 30)
     else:
-        m = dias_tasa / capitalizacion
+        cap_days = capitalizacion
+        
+    n = 30 / cap_days
+
+    if 'efectiva_mensual' in tipo_tasa:
+        return tasa
+    elif 'efectiva_anual' in tipo_tasa:
+        return (1 + tasa) ** (1/12) - 1
+    else:
+        # nominal_anual
+        m = dias_tasa / cap_days
         return (1 + tasa / m) ** n - 1
 
 
@@ -613,7 +695,12 @@ def generar_cronograma_compra_inteligente(sf, tem, n, gracia_tipo, gracia_meses,
 @login_required
 def credito_nuevo():
     db = get_db()
-    clientes = db.execute("SELECT id, nombres||' '||apellidos as nombre FROM clientes ORDER BY nombres").fetchall()
+    c_rows = db.execute("SELECT id, nombre_completo FROM clientes ORDER BY nombre_completo").fetchall()
+    clientes = []
+    for r in c_rows:
+        nombre = r["nombre_completo"].replace(";", " ") if r["nombre_completo"] else ""
+        clientes.append({"id": r["id"], "nombre": nombre})
+
     if request.method == "POST":
         f = request.form
         cid = int(f["cliente_id"])
@@ -634,23 +721,45 @@ def credito_nuevo():
         portes = float(f["portes"])
         moneda = f["moneda"]
 
-        # cambiar por el método de compra inteligente
         cronograma, van, tir, tcea = generar_cronograma_v2(
             sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes
         )
 
-        # modificar esto por la tabla correcta
-        db.execute("""
-            INSERT INTO creditos(cliente_id,vehiculo_id,moneda,precio_vehiculo,cuota_inicial_pct,
-            cuota_inicial_monto,saldo_financiado,tipo_tasa,tasa_valor,capitalizacion,tem,
-            plazo_meses,gracia_tipo,gracia_meses,tsd,tsv,portes,tcea,van,tir,cronograma)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (cid, vid, moneda, vv, ci_pct, ci_monto, sf, tipo_tasa, tasa_valor, cap,
-              tem, plazo, gracia_tipo, gracia_meses, tsd*100, tsv*100, portes, tcea, van, tir,
-              json.dumps(cronograma)))
-        db.commit()
+        cursor = db.execute("""
+            INSERT INTO simulaciones(
+                tcea, van, tir, saldo_financiado, plazo_meses, cantidad_cuotas,
+                porc_cuota_inicial, tipo_periodo_gracia, periodo_gracia_meses,
+                tipo_moneda, es_elegido, id_usuario, id_cliente, id_vehiculo,
+                id_banco, id_tasa, moneda, precio_vehiculo, cuota_inicial_pct,
+                cuota_inicial_monto, tipo_tasa, tasa_valor, capitalizacion, tem,
+                gracia_tipo, gracia_meses, tsd, tsv, portes, cronograma
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            tcea, van, tir, sf, plazo, plazo,
+            ci_pct, gracia_tipo, gracia_meses, moneda, 'SI',
+            session["user_id"], cid, vid, 1, 1,
+            moneda, vv, ci_pct, ci_monto, tipo_tasa, tasa_valor, cap, tem,
+            gracia_tipo, gracia_meses, tsd*100, tsv*100, portes, json.dumps(cronograma)
+        ))
+        sim_id = cursor.lastrowid
 
-        # crear otro insert de los pagos (cronograma), si quieren modifiquen como se recolecta esos datos en ese apartado
+        for row in cronograma:
+            db.execute("""
+                INSERT INTO pagos(
+                    num_cuota, tipo_tasa, tasa_interes, dias_capitalizacion, dias_tasa,
+                    tipo_gracia, esta_pagado, saldo_inicial_cf, interes_cf, amortizacion_cf,
+                    seguro_desgravamen_cf, saldo_final_cf, saldo_inicial, interes, amortizacion,
+                    seguro_desgravamen, seguro_riesgo, portes, gastos_admin, saldo_final, flujo,
+                    id_simulacion
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                row["periodo"], tipo_tasa, tasa_valor, 30, 360,
+                gracia_tipo, 0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                row["saldo_inicial"], row["interes"], row["amort"],
+                row["seg_desgrav"], row["seg_veh"], row["portes"], 0.0,
+                row["saldo_final"], -row["cuota_total"], sim_id
+            ))
+        db.commit()
         flash("Crédito calculado y guardado.", "success")
         return redirect(url_for("creditos"))
 
@@ -660,7 +769,7 @@ def credito_nuevo():
 @login_required
 def api_vehiculos(cid):
     db = get_db()
-    rows = db.execute("SELECT id, marca||' '||modelo as nombre, precio FROM vehiculos WHERE cliente_id=?", (cid,)).fetchall()
+    rows = db.execute("SELECT id, marca||' '||modelo as nombre, precio FROM vehiculos").fetchall()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/calcular", methods=["POST"])
@@ -701,30 +810,43 @@ def creditos():
     rows = db.execute("""
         SELECT sim.id, cl.nombre_completo as cliente,
                v.marca||' '||v.modelo as vehiculo,
-               sim.tipo_moneda, sim.saldo_financiado, sim.plazo_meses,
-               sim.tcea, sim.van, sim.tir, sim.creado_en
+               sim.moneda, sim.saldo_financiado, sim.plazo_meses,
+               sim.tcea, sim.van, sim.tir, sim.creado_en as created_at
         FROM simulaciones sim
         JOIN clientes cl ON sim.id_cliente=cl.id
         JOIN vehiculos v ON sim.id_vehiculo=v.id
         ORDER BY sim.creado_en DESC
     """).fetchall()
-    return render_template("creditos.html", creditos=rows)
+    
+    creditos_list = []
+    for r in rows:
+        c_dict = dict(r)
+        if c_dict["cliente"]:
+            c_dict["cliente"] = c_dict["cliente"].replace(";", " ")
+        creditos_list.append(c_dict)
+        
+    return render_template("creditos.html", creditos=creditos_list)
 
 @app.route("/creditos/<int:crid>")
 @login_required
 def credito_detalle(crid):
     db = get_db()
-    credito = db.execute("""
-        SELECT cr.*, cl.nombres||' '||cl.apellidos as cliente_nombre,
-               cl.dni, cl.email, cl.telefono,
+    row = db.execute("""
+        SELECT sim.*, sim.creado_en as created_at,
+               cl.nombre_completo as cliente_nombre, cl.dni, cl.email, cl.telefono,
                v.marca, v.modelo, v.anio
-        FROM creditos cr
-        JOIN clientes cl ON cr.cliente_id=cl.id
-        JOIN vehiculos v ON cr.vehiculo_id=v.id
-        WHERE cr.id=?
+        FROM simulaciones sim
+        JOIN clientes cl ON sim.id_cliente=cl.id
+        JOIN vehiculos v ON sim.id_vehiculo=v.id
+        WHERE sim.id=?
     """, (crid,)).fetchone()
-    if not credito:
+    if not row:
         return redirect(url_for("creditos"))
+    
+    credito = dict(row)
+    if credito["cliente_nombre"]:
+        credito["cliente_nombre"] = credito["cliente_nombre"].replace(";", " ")
+        
     cron = json.loads(credito["cronograma"])
     return render_template("credito_detalle.html", credito=credito, cronograma=cron)
 
@@ -732,17 +854,31 @@ def credito_detalle(crid):
 @login_required
 def credito_editar(crid):
     db = get_db()
-    credito = db.execute("SELECT * FROM creditos WHERE id=?", (crid,)).fetchone()
-    clientes = db.execute("SELECT id, nombres||' '||apellidos as nombre FROM clientes ORDER BY nombres").fetchall()
+    row = db.execute("SELECT * FROM simulaciones WHERE id=?", (crid,)).fetchone()
+    if not row:
+        return redirect(url_for("creditos"))
+    
+    credito = dict(row)
+    credito["cliente_id"] = row["id_cliente"]
+    credito["vehiculo_id"] = row["id_vehiculo"]
+    
+    c_rows = db.execute("SELECT id, nombre_completo FROM clientes ORDER BY nombre_completo").fetchall()
+    clientes = []
+    for r in c_rows:
+        nombre = r["nombre_completo"].replace(";", " ") if r["nombre_completo"] else ""
+        clientes.append({"id": r["id"], "nombre": nombre})
+
     if request.method == "POST":
         f = request.form
+        cid = int(f["cliente_id"])
+        vid = int(f["vehiculo_id"])
         vv = float(f["precio_vehiculo"])
         ci_pct = float(f["cuota_inicial_pct"])
         ci_monto = vv * ci_pct / 100
         sf = vv - ci_monto
         tipo_tasa = f["tipo_tasa"]
         tasa_valor = float(f["tasa_valor"])
-        cap = f.get("capitalizacion","mensual")
+        cap = f.get("capitalizacion", "mensual")
         tem = calcular_tem(tipo_tasa, tasa_valor, cap)
         plazo = int(f["plazo_meses"])
         gracia_tipo = f["gracia_tipo"]
@@ -755,14 +891,41 @@ def credito_editar(crid):
         cronograma, van, tir, tcea = generar_cronograma_v2(
             sf, tem, plazo, gracia_tipo, gracia_meses, tsd, tsv, vv, portes
         )
+        
         db.execute("""
-            UPDATE creditos SET moneda=?,precio_vehiculo=?,cuota_inicial_pct=?,cuota_inicial_monto=?,
-            saldo_financiado=?,tipo_tasa=?,tasa_valor=?,capitalizacion=?,tem=?,plazo_meses=?,
-            gracia_tipo=?,gracia_meses=?,tsd=?,tsv=?,portes=?,tcea=?,van=?,tir=?,cronograma=?
+            UPDATE simulaciones SET
+                tcea=?, van=?, tir=?, saldo_financiado=?, plazo_meses=?, cantidad_cuotas=?,
+                porc_cuota_inicial=?, tipo_periodo_gracia=?, periodo_gracia_meses=?,
+                tipo_moneda=?, id_cliente=?, id_vehiculo=?, moneda=?, precio_vehiculo=?,
+                cuota_inicial_pct=?, cuota_inicial_monto=?, tipo_tasa=?, tasa_valor=?,
+                capitalizacion=?, tem=?, gracia_tipo=?, gracia_meses=?, tsd=?, tsv=?,
+                portes=?, cronograma=?
             WHERE id=?
-        """, (moneda, vv, ci_pct, ci_monto, sf, tipo_tasa, tasa_valor, cap, tem, plazo,
-              gracia_tipo, gracia_meses, tsd*100, tsv*100, portes, tcea, van, tir,
-              json.dumps(cronograma), crid))
+        """, (
+            tcea, van, tir, sf, plazo, plazo,
+            ci_pct, gracia_tipo, gracia_meses, moneda, cid, vid, moneda, vv,
+            ci_pct, ci_monto, tipo_tasa, tasa_valor, cap, tem,
+            gracia_tipo, gracia_meses, tsd*100, tsv*100, portes, json.dumps(cronograma),
+            crid
+        ))
+
+        db.execute("DELETE FROM pagos WHERE id_simulacion=?", (crid,))
+        for row in cronograma:
+            db.execute("""
+                INSERT INTO pagos(
+                    num_cuota, tipo_tasa, tasa_interes, dias_capitalizacion, dias_tasa,
+                    tipo_gracia, esta_pagado, saldo_inicial_cf, interes_cf, amortizacion_cf,
+                    seguro_desgravamen_cf, saldo_final_cf, saldo_inicial, interes, amortizacion,
+                    seguro_desgravamen, seguro_riesgo, portes, gastos_admin, saldo_final, flujo,
+                    id_simulacion
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                row["periodo"], tipo_tasa, tasa_valor, 30, 360,
+                gracia_tipo, 0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                row["saldo_inicial"], row["interes"], row["amort"],
+                row["seg_desgrav"], row["seg_veh"], row["portes"], 0.0,
+                row["saldo_final"], -row["cuota_total"], crid
+            ))
         db.commit()
         flash("Crédito recalculado y actualizado.", "success")
         return redirect(url_for("credito_detalle", crid=crid))
