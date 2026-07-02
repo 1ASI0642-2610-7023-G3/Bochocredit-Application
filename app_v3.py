@@ -66,15 +66,15 @@ def dashboard():
     headers = _auth_headers()
     try:
         stats = {}
-        r = requests.get(f"{BACKEND_URL}/cantidad-clientes", headers=headers)  # TODO
-        stats["clientes"] = r.json().get("count") if r.ok else 0
-        r = requests.get(f"{BACKEND_URL}/cantidad-creditos", headers=headers)  # TODO
-        stats["creditos"] = r.json().get("count") if r.ok else 0
-        r = requests.get(f"{BACKEND_URL}/cantidad-vehiculos", headers=headers)  # TODO
-        stats["vehiculos"] = r.json().get("count") if r.ok else 0
+        r = requests.get(f"{BACKEND_URL}/dashboard/cantidad-clientes", headers=headers)
+        stats["clientes"] = r.json() if r.ok else 0
+        r = requests.get(f"{BACKEND_URL}/dashboard/cantidad-creditos", headers=headers)
+        stats["creditos"] = r.json() if r.ok else 0
+        r = requests.get(f"{BACKEND_URL}/dashboard/cantidad-vehiculos", headers=headers)
+        stats["vehiculos"] = r.json() if r.ok else 0
 
         # recientes: obtener últimas simulaciones/creditos elegidos
-        r_rec = requests.get(f"{BACKEND_URL}/creditos-recientes", headers=headers)  # TODO
+        r_rec = requests.get(f"{BACKEND_URL}/dashboard/creditos-recientes", headers=headers)
         recientes = r_rec.json() if r_rec.ok else []
 
     except requests.exceptions.RequestException as e:
@@ -92,7 +92,10 @@ def dashboard():
 @login_required
 def clientes():
     headers = _auth_headers()
-    resp = requests.get(f"{BACKEND_URL}/clientes", headers=headers)  # TODO: backend path
+    resp = requests.get(f"{BACKEND_URL}/clientes", headers=headers)
+    print("\n\n\n")
+    print(resp)
+    print("\n\n\n")
     rows = resp.json()
     return render_template("clientes.html", clientes=rows)
 
