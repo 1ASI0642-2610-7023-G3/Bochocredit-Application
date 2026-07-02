@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BochoCredit — Iniciar Sesión</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<style>
+  :root { --bc-navy:#0b1e3d; --bc-blue:#1a56db; --bc-cyan:#06b6d4; }
+  body { background: linear-gradient(135deg, var(--bc-navy) 0%, #1a3a6e 60%, #0e4d7a 100%); min-height:100vh; display:flex; align-items:center; justify-content:center; }
+  .login-wrap { width: 100%; max-width: 420px; padding: 1.5rem; }
+  .login-card { background:#fff; border-radius:20px; padding:2.5rem 2.2rem; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+  .logo-text { font-size:2rem; font-weight:900; color:var(--bc-navy); letter-spacing:-1px; }
+  .logo-text span { color: var(--bc-cyan); }
+  .tagline { color:#7c8db5; font-size:.83rem; }
+  .form-control { border:1.5px solid #e8ecf4; border-radius:10px; padding:.6rem .9rem; font-size:.9rem; }
+  .form-control:focus { border-color:var(--bc-blue); box-shadow:0 0 0 3px rgba(26,86,219,.1); }
+  .btn-login { background:var(--bc-blue); color:#fff; border:none; border-radius:10px; padding:.7rem; font-weight:700; font-size:.95rem; width:100%; transition:background .2s; }
+  .btn-login:hover { background:#1347b8; }
+  .divider { color:#9ca3af; font-size:.78rem; }
+  .demo-hint { background:#f0f7ff; border-radius:10px; padding:.8rem 1rem; font-size:.78rem; color:#4b72b8; }
+  .floating-car { position:fixed; bottom:2rem; right:2rem; font-size:4rem; opacity:.08; color:#fff; pointer-events:none; }
+</style>
+</head>
+<body>
+<div class="floating-car"><i class="bi bi-car-front-fill"></i></div>
+<div class="login-wrap">
+  <div class="text-center mb-4">
+    <div class="logo-text">Bocho<span>Credit</span></div>
+    <div class="tagline mt-1">Sistema de Crédito Vehicular · Compra Inteligente</div>
+  </div>
+  <div class="login-card">
+    <h6 class="fw-700 mb-4" style="color:#0b1e3d">Iniciar Sesión</h6>
+    {% if error %}
+    <div class="alert alert-danger py-2 px-3 rounded-3 mb-3" style="font-size:.84rem">
+      <i class="bi bi-exclamation-triangle me-1"></i> {{ error }}
+    </div>
+    {% endif %}
+    <form method="POST">
+      <div class="mb-3">
+        <label class="form-label fw-600" style="font-size:.82rem;color:#374151">Usuario</label>
+        <div class="input-group">
+          <span class="input-group-text" style="border:1.5px solid #e8ecf4;border-right:none;border-radius:10px 0 0 10px;background:#f8faff"><i class="bi bi-person" style="color:#7c8db5"></i></span>
+          <input type="text" name="username" class="form-control" style="border-left:none;border-radius:0 10px 10px 0" placeholder="usuario" required>
+        </div>
+      </div>
+      <div class="mb-4">
+        <label class="form-label fw-600" style="font-size:.82rem;color:#374151">Contraseña</label>
+        <div class="input-group">
+          <span class="input-group-text" style="border:1.5px solid #e8ecf4;border-right:none;border-radius:10px 0 0 10px;background:#f8faff"><i class="bi bi-lock" style="color:#7c8db5"></i></span>
+          <input type="password" name="password" class="form-control" style="border-left:none;border-radius:0 10px 10px 0" placeholder="••••••••" required>
+        </div>
+      </div>
+      <button type="submit" class="btn-login">Ingresar al sistema <i class="bi bi-arrow-right ms-1"></i></button>
+    </form>
+    <hr class="my-3">
+    <div class="demo-hint">
+      <i class="bi bi-info-circle me-1"></i> <strong>Demo:</strong> usuario <code>admin</code> / clave <code>admin123</code>
+    </div>
+  </div>
+  <div class="text-center mt-3 text-white-50" style="font-size:.75rem">
+    © 2026 BochoCredit · Finanzas e Ingeniería Económica · UPC
+  </div>
+</div>
+</body>
+</html>

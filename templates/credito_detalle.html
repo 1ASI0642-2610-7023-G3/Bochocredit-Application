@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Crédito #{{ credito.id }} — BochoCredit{% endblock %}
+{% block page_title %}Cronograma de Pagos #{{ credito.id }}{% endblock %}
+{% block content %}
+<!-- Top indicators -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="indicator-box">
+      <div class="ind-label">TCEA (SBS)</div>
+      <div class="ind-val ind-negative">{{ credito.tcea }}%</div>
+      <div class="ind-sub">Costo Efectivo Anual</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="indicator-box">
+      <div class="ind-label">VAN (Deudor)</div>
+      <div class="ind-val ind-negative">{{ "{:,.2f}".format(credito.van) }}</div>
+      <div class="ind-sub">Valor Actual Neto</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="indicator-box">
+      <div class="ind-label">TIR Mensual</div>
+      <div class="ind-val" style="color:#7c3aed">{{ credito.tir }}%</div>
+      <div class="ind-sub">Tasa Interna de Retorno</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="indicator-box">
+      <div class="ind-label">Saldo Financiado</div>
+      <div class="ind-val" style="color:#0b1e3d">
+        {{ "S/" if credito.moneda=='soles' else "$" }} {{ "{:,.2f}".format(credito.saldo_financiado) }}
+      </div>
+      <div class="ind-sub">{{ credito.plazo_meses }} cuotas mensuales</div>
+    </div>
+  </div>
+</div>
+
+<!-- Info cards -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="form-card h-100">
+      <div class="section-title">Cliente</div>
+      <div style="font-size:1rem;font-weight:700;color:#0b1e3d">{{ credito.cliente_nombre }}</div>
+      <div class="text-muted" style="font-size:.82rem">DNI: {{ credito.dni }}</div>
+      <div class="text-muted" style="font-size:.82rem">{{ credito.email or '' }}</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="form-card h-100">
+      <div class="section-title">Vehículo</div>
+      <div style="font-size:1rem;font-weight:700;color:#0b1e3d">{{ credito.marca }} {{ credito.modelo }}</div>
+      <div class="text-muted" style="font-size:.82rem">Año {{ credito.anio }}</div>
+      <div class="text-muted" style="font-size:.82rem">Precio: {{ "S/" if credito.moneda=='soles' else "$" }} {{ "{:,.2f}".format(credito.precio_vehiculo) }}</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="form-card h-100">
+      <div class="section-title">Condiciones</div>
+      <div class="row g-1" style="font-size:.82rem">
+        <div class="col-6">Moneda</div><div class="col-6"><strong>{{ "Soles S/" if credito.moneda=='soles' else "Dólares $" }}</strong></div>
+        <div class="col-6">Cuota Inicial</div><div class="col-6"><strong>{{ credito.cuota_inicial_pct }}%</strong></div>
+        <div class="col-6">Tipo Tasa</div><div class="col-6"><strong>{{ credito.tipo_tasa.replace('_',' ').upper() }}</strong></div>
+        <div class="col-6">Tasa</div><div class="col-6"><strong>{{ credito.tasa_valor }}%</strong></div>
+        <div class="col-6">TEM</div><div class="col-6"><strong>{{ "%.6f"|format(credito.tem*100) }}%</strong></div>
+        <div class="col-6">Gracia</div><div class="col-6"><strong>{{ credito.gracia_tipo }} ({{ credito.gracia_meses }}m)</strong></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Actions -->
+<div class="d-flex gap-2 mb-3">
+  <a href="{{ url_for('credito_editar', crid=credito.id) }}" class="btn btn-bc-primary px-4">
+    <i class="bi bi-pencil me-1"></i> Editar / Recalcular
+  </a>
+  <button class="btn btn-light px-4" onclick="window.print()"><i class="bi bi-printer me-1"></i> Imprimir</button>
+  <a href="{{ url_for('creditos') }}" class="btn btn-light px-4">← Volver</a>
+</div>
+
+<!-- Cronograma -->
+<div class="bc-table">
+  <div class="px-3 py-2 d-flex align-items-center justify-content-between" style="border-bottom:1px solid #f0f4ff">
+    <span style="font-weight:700;color:#0b1e3d;font-size:.92rem"><i class="bi bi-table me-2" style="color:#1a56db"></i>Cronograma de Pagos — Método Francés Vencido Ordinario</span>
+    <span style="font-size:.75rem;color:#9ca3af">{{ cronograma|length }} períodos</span>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="table cron-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Saldo Inicial</th>
+          <th>Interés</th>
+          <th>Amort.</th>
+          <th>Cuota Capital</th>
+          <th>Seg. Desgrav.</th>
+          <th>Seg. Vehicular</th>
+          <th>Portes</th>
+          <th>Cuota Total</th>
+          <th>Saldo Final</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in cronograma %}
+        <tr class="{% if credito.gracia_tipo != 'ninguno' and f.periodo <= credito.gracia_meses %}grace-row{% endif %}">
+          <td>{{ f.periodo }}</td>
+          <td>{{ "{:,.2f}".format(f.saldo_inicial) }}</td>
+          <td>{{ "{:,.2f}".format(f.interes) }}</td>
+          <td>{{ "{:,.2f}".format(f.amort) }}</td>
+          <td>{{ "{:,.2f}".format(f.cuota_capital) }}</td>
+          <td>{{ "{:,.2f}".format(f.seg_desgrav) }}</td>
+          <td>{{ "{:,.2f}".format(f.seg_veh) }}</td>
+          <td>{{ "{:,.2f}".format(f.portes) }}</td>
+          <td><strong>{{ "{:,.2f}".format(f.cuota_total) }}</strong></td>
+          <td>{{ "{:,.2f}".format(f.saldo_final) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:#f0f4ff;font-weight:700">
+          <td>TOTAL</td>
+          <td>—</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='interes')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='amort')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='cuota_capital')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='seg_desgrav')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='seg_veh')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='portes')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='cuota_total')) }}</td>
+          <td>—</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+{% if credito.gracia_tipo != 'ninguno' %}
+<div class="mt-2" style="font-size:.78rem;color:#d97706"><i class="bi bi-info-circle me-1"></i> Las filas amarillas corresponden al período de gracia <strong>{{ credito.gracia_tipo }}</strong>.</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }} — BochoCredit{% endblock %}
+{% block page_title %}{{ titulo }}{% endblock %}
+{% block extra_head %}
+<style>
+.preview-panel { background: linear-gradient(135deg,#0b1e3d,#1a3a6e); border-radius:16px; padding:1.5rem; color:#fff; position:sticky; top:80px; }
+.preview-panel .p-label { font-size:.68rem; color:rgba(255,255,255,.5); text-transform:uppercase; letter-spacing:.8px; }
+.preview-panel .p-val { font-size:1.1rem; font-weight:800; }
+.preview-panel .p-sep { border-top:1px solid rgba(255,255,255,.1); margin:.8rem 0; }
+.preview-panel .highlight { background:rgba(6,182,212,.15); border:1px solid rgba(6,182,212,.3); border-radius:10px; padding:.7rem 1rem; }
+.mini-cron { max-height:260px; overflow-y:auto; margin-top:1rem; }
+.mini-cron table { font-size:.72rem; width:100%; color:rgba(255,255,255,.8); }
+.mini-cron th { color:rgba(255,255,255,.4); padding:.25rem .4rem; }
+.mini-cron td { padding:.22rem .4rem; border-bottom:1px solid rgba(255,255,255,.05); }
+.cap-field { display:none; }
+</style>
+{% endblock %}
+{% block content %}
+<form method="POST" id="creditoForm">
+<div class="row g-3">
+  <!-- LEFT: CONFIG -->
+  <div class="col-lg-7">
+
+    <!-- Cliente / Vehículo -->
+    <div class="form-card mb-3">
+      <div class="section-title">Cliente y Vehículo</div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Cliente *</label>
+          <select name="cliente_id" id="clienteSelect" class="form-select" required>
+            <option value="">Seleccionar cliente...</option>
+            {% for c in clientes %}
+            <option value="{{ c.id }}" {% if credito and credito.cliente_id==c.id %}selected{% endif %}>{{ c.nombres + " " + c.apellidos }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Vehículo *</label>
+          <select name="vehiculo_id" id="vehiculoSelect" class="form-select" required>
+            <option value="">Seleccionar vehículo</option>
+            {% for v in vehiculos %}
+            <option value="{{ v.id }}" {% if credito and credito.vehiculo_id==v.id %}selected{% endif %}>{{ v.marca + " " + v.modelo }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Moneda y precio -->
+    <div class="form-card mb-3">
+      <div class="section-title">Condiciones del Crédito</div>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Moneda *</label>
+          <select name="moneda" class="form-select" id="monedaSelect">
+            <option value="soles" {% if not credito or credito.moneda=='soles' %}selected{% endif %}>S/ Soles</option>
+            <option value="dolares" {% if credito and credito.moneda=='dolares' %}selected{% endif %}>$ Dólares</option>
+          </select>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Precio del Vehículo *</label>
+          <div class="input-group">
+            <span class="input-group-text" id="monedaSymbol">S/</span>
+            <input type="number" name="precio_vehiculo" id="precioVehiculo" class="form-control" step="0.01" value="{{ credito.precio_vehiculo if credito else '' }}" required>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Cuota Inicial (%)</label>
+          <div class="input-group">
+            <input type="number" name="cuota_inicial_pct" id="cuotaInicialPct" class="form-control" step="0.01" min="0" max="90" value="{{ credito.cuota_inicial_pct if credito else 20 }}">
+            <span class="input-group-text">%</span>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Plazo (meses) *</label>
+          <select name="plazo_meses" class="form-select" id="plazoMeses">
+            {% for p in [12,18,24,36,48,60,72,84] %}
+            <option value="{{ p }}" {% if credito and credito.plazo_meses==p %}selected{% elif not credito and p==48 %}selected{% endif %}>{{ p }} meses</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tasa -->
+    <div class="form-card mb-3">
+      <div class="section-title">Tasa de Interés</div>
+      <div class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label">Tipo de Tasa</label>
+          <select name="tipo_tasa" class="form-select" id="tipoTasa">
+            <option value="efectiva_anual" {% if not credito or credito.tipo_tasa=='efectiva_anual' %}selected{% endif %}>TEA (Efectiva Anual)</option>
+            <option value="efectiva_mensual" {% if credito and credito.tipo_tasa=='efectiva_mensual' %}selected{% endif %}>TEM (Efectiva Mensual)</option>
+            <option value="nominal_anual" {% if credito and credito.tipo_tasa=='nominal_anual' %}selected{% endif %}>TNA (Nominal Anual)</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Valor (%)</label>
+          <div class="input-group">
+            <input type="number" name="tasa_valor" id="tasaValor" class="form-control" step="0.001" value="{{ credito.tasa_valor if credito else 15 }}" required>
+            <span class="input-group-text">%</span>
+          </div>
+        </div>
+        <div class="col-md-3 cap-field" id="capField">
+          <label class="form-label">Capitalización</label>
+          <select name="capitalizacion" class="form-select" id="capitalizacion">
+            {% for k,v in [('mensual','Mensual'),('diaria','Diaria'),('quincenal','Quincenal'),('trimestral','Trimestral'),('semestral','Semestral'),('anual','Anual')] %}
+            <option value="{{ k }}" {% if credito and credito.capitalizacion==k %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gracia -->
+    <div class="form-card mb-3">
+      <div class="section-title">Período de Gracia</div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Tipo de Gracia</label>
+          <select name="gracia_tipo" class="form-select" id="graciaTipo">
+            <option value="ninguno" {% if not credito or credito.gracia_tipo=='ninguno' %}selected{% endif %}>Sin Gracia</option>
+            <option value="parcial" {% if credito and credito.gracia_tipo=='parcial' %}selected{% endif %}>Parcial (solo intereses)</option>
+            <option value="total" {% if credito and credito.gracia_tipo=='total' %}selected{% endif %}>Total (capitaliza intereses)</option>
+          </select>
+        </div>
+        <div class="col-md-6" id="graciaMesesDiv">
+          <label class="form-label">Meses de Gracia</label>
+          <input type="number" name="gracia_meses" id="graciaMeses" class="form-control" min="0" max="24" value="{{ credito.gracia_meses if credito else 0 }}">
+        </div>
+      </div>
+    </div>
+
+    <!-- Seguros y portes -->
+    <div class="form-card mb-3">
+      <div class="section-title">Seguros y Comisiones</div>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Seg. Desgravamen (%/mes)</label>
+          <div class="input-group">
+            <input type="number" name="tsd" id="tsd" class="form-control" step="0.001" value="{{ credito.tsd if credito else 0.05 }}">
+            <span class="input-group-text">%</span>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Seg. Vehicular (%/mes)</label>
+          <div class="input-group">
+            <input type="number" name="tsv" id="tsv" class="form-control" step="0.001" value="{{ credito.tsv if credito else 0.15 }}">
+            <span class="input-group-text">%</span>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Portes / mes</label>
+          <div class="input-group">
+            <span class="input-group-text" id="portesSymbol">S/</span>
+            <input type="number" name="portes" id="portes" class="form-control" step="0.01" value="{{ credito.portes if credito else 5 }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-bc-gold px-5 py-2">
+        <i class="bi bi-save me-1"></i> Guardar Oferta
+      </button>
+      <a href="{{ url_for('creditos') }}" class="btn btn-light px-4">Cancelar</a>
+    </div>
+  </div>
+
+  <!-- RIGHT: PREVIEW -->
+  <div class="col-lg-5">
+    <div class="preview-panel" id="previewPanel">
+      <div style="font-size:.8rem;color:rgba(255,255,255,.5);font-weight:700;letter-spacing:1px;margin-bottom:1rem">VISTA PREVIA EN TIEMPO REAL</div>
+
+      <div class="row g-2 mb-2">
+        <div class="col-6">
+          <div class="p-label">Saldo Financiado</div>
+          <div class="p-val" id="pvSF">—</div>
+        </div>
+        <div class="col-6">
+          <div class="p-label">Cuota Inicial</div>
+          <div class="p-val" id="pvCI">—</div>
+        </div>
+      </div>
+      <div class="p-sep"></div>
+      <div class="row g-2 mb-2">
+        <div class="col-6">
+          <div class="p-label">TEM</div>
+          <div class="p-val" id="pvTEM">—</div>
+        </div>
+        <div class="col-6">
+          <div class="p-label">TEA Equiv.</div>
+          <div class="p-val" id="pvTEA">—</div>
+        </div>
+      </div>
+      <div class="p-sep"></div>
+      <div class="highlight mb-2">
+        <div class="p-label">TCEA (SBS)</div>
+        <div style="font-size:1.6rem;font-weight:900;color:#06b6d4" id="pvTCEA">—</div>
+        <div class="p-label mt-1">Obligatorio – Transparencia Financiera</div>
+      </div>
+      <div class="row g-2">
+        <div class="col-6">
+          <div class="p-label">VAN (deudor)</div>
+          <div class="p-val" id="pvVAN" style="color:#f87171">—</div>
+        </div>
+        <div class="col-6">
+          <div class="p-label">TIR mensual</div>
+          <div class="p-val" id="pvTIR">—</div>
+        </div>
+      </div>
+      <div class="p-sep"></div>
+      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:.5rem">RESUMEN CRONOGRAMA (primeras filas)</div>
+      <div class="mini-cron" id="miniCron">
+        <div style="color:rgba(255,255,255,.3);font-size:.78rem;text-align:center;padding:1rem">Complete los datos para ver la simulación</div>
+      </div>
+    </div>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+const SYM = { soles: "S/", dolares: "$" };
+
+document.getElementById('monedaSelect').addEventListener('change', e => {
+  const s = SYM[e.target.value] || "S/";
+  document.getElementById('monedaSymbol').textContent = s;
+  document.getElementById('portesSymbol').textContent = s;
+});
+
+document.getElementById('tipoTasa').addEventListener('change', function() {
+  document.getElementById('capField').style.display = this.value === 'nominal_anual' ? 'block' : 'none';
+});
+
+document.getElementById('vehiculoSelect').addEventListener('change', function() {
+  const opt = this.options[this.selectedIndex];
+  if (opt && opt.dataset.precio) {
+    document.getElementById('precioVehiculo').value = opt.dataset.precio;
+    calcular();
+  }
+});
+
+// Trigger on init for edit mode
+{% if credito %}
+window.addEventListener('load', async () => {
+  // preload vehicles
+  const cid = document.getElementById('clienteSelect').value;
+  if (cid) {
+    const r = await fetch(`/api/vehiculos/${cid}`);
+    const data = await r.json();
+    const sel = document.getElementById('vehiculoSelect');
+    sel.innerHTML = '<option value="">Seleccionar vehículo...</option>';
+    data.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v.id; o.text = `${v.nombre}`;
+      o.dataset.precio = v.precio;
+      sel.appendChild(o);
+    });
+    sel.value = "{{ credito.vehiculo_id }}";
+    const opt = sel.options[sel.selectedIndex];
+    if (opt && opt.dataset.precio) {
+      document.getElementById('precioVehiculo').value = opt.dataset.precio;
+    }
+    sel.dispatchEvent(new Event('change'));
+  }
+  document.getElementById('monedaSelect').dispatchEvent(new Event('change'));
+  document.getElementById('tipoTasa').dispatchEvent(new Event('change'));
+  calcular();
+});
+{% endif %}
+
+// Auto-recalc on any input change
+['precioVehiculo','cuotaInicialPct','plazoMeses','tipoTasa','tasaValor','capitalizacion',
+ 'graciaTipo','graciaMeses','tsd','tsv','portes'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', calcular);
+});
+
+let calcTimer;
+['precioVehiculo','cuotaInicialPct','tasaValor','graciaMeses','tsd','tsv','portes'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => { clearTimeout(calcTimer); calcTimer = setTimeout(calcular, 600); });
+});
+
+function fmt(n, sym="S/") {
+  if (n === null || n === undefined || isNaN(n)) return "—";
+  return sym + " " + parseFloat(n).toLocaleString('es-PE', {minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+async function calcular() {
+  const vv = parseFloat(document.getElementById('precioVehiculo').value);
+  if (!vv || vv <= 0) return;
+  const payload = {
+    precio_vehiculo: vv,
+    cuota_inicial_pct: parseFloat(document.getElementById('cuotaInicialPct').value)||0,
+    plazo_meses: parseInt(document.getElementById('plazoMeses').value)||48,
+    tipo_tasa: document.getElementById('tipoTasa').value,
+    tasa_valor: parseFloat(document.getElementById('tasaValor').value)||15,
+    capitalizacion: document.getElementById('capitalizacion').value,
+    gracia_tipo: document.getElementById('graciaTipo').value,
+    gracia_meses: parseInt(document.getElementById('graciaMeses').value)||0,
+    tsd: parseFloat(document.getElementById('tsd').value)||0.05,
+    tsv: parseFloat(document.getElementById('tsv').value)||0.15,
+    portes: parseFloat(document.getElementById('portes').value)||5,
+  };
+  const sym = SYM[document.getElementById('monedaSelect').value] || "S/";
+  try {
+    const r = await fetch('/api/calcular', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    document.getElementById('pvSF').textContent = fmt(d.sf, sym);
+    document.getElementById('pvCI').textContent = fmt(d.ci_monto, sym);
+    document.getElementById('pvTEM').textContent = d.tem + "%";
+    document.getElementById('pvTEA').textContent = d.tea + "%";
+    document.getElementById('pvTCEA').textContent = d.tcea + "%";
+    document.getElementById('pvVAN').textContent = fmt(d.van, sym);
+    document.getElementById('pvTIR').textContent = d.tir + "%";
+
+    // Mini cronograma
+    const rows = d.cronograma.slice(0,8);
+    let html = `<table><thead><tr><th>#</th><th>Cuota Cap.</th><th>Seg.Desgrv</th><th>Total</th><th>Saldo</th></tr></thead><tbody>`;
+    rows.forEach(f => {
+      const graceClass = (payload.gracia_tipo !== 'ninguno' && f.periodo <= payload.gracia_meses) ? 'style="background:rgba(245,158,11,.15)"' : '';
+      html += `<tr ${graceClass}><td>${f.periodo}</td><td>${fmt(f.cuota_capital,sym)}</td><td>${fmt(f.seg_desgrav,sym)}</td><td><strong>${fmt(f.cuota_total,sym)}</strong></td><td>${fmt(f.saldo_final,sym)}</td></tr>`;
+    });
+    if (d.cronograma.length > 8) html += `<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3)">... ${d.cronograma.length - 8} filas más</td></tr>`;
+    html += '</tbody></table>';
+    document.getElementById('miniCron').innerHTML = html;
+  } catch(e) { console.error(e); }
+}
+</script>
+{% endblock %}
