@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+{% block title %}Crédito #{{ credito.id }} — BochoCredit{% endblock %}
+{% block page_title %}
+  <span style="display:flex;align-items:center;gap:.6rem">
+    Cronograma de Pagos
+    <span class="{% if credito.es_elegido=='SI' %}status-active{% else %}status-draft{% endif %}" style="font-size:.75rem;font-weight:700;padding:.25rem .7rem;border-radius:999px;">
+      {% if credito.es_elegido=='SI' %}✓ Plan Activo{% else %}Borrador{% endif %}
+    </span>
+  </span>
+{% endblock %}
+{% block extra_head %}
+<style>
+  .status-active { background: linear-gradient(135deg,#dcfce7,#bbf7d0); color: #15803d; }
+  .status-draft { background: rgba(148,163,184,.12); color: #64748b; }
+  .chart-container { background: #fff; border-radius: 16px; padding: 1.4rem 1.6rem; box-shadow: var(--bc-shadow-sm); border: 1px solid rgba(148,163,184,.1); }
+  .chart-title { font-size: .72rem; text-transform: uppercase; letter-spacing: 1.1px; color: var(--bc-text-muted); font-weight: 800; margin-bottom: .3rem; }
+  .info-row { display:flex; gap:.35rem; font-size:.81rem; padding:.3rem 0; border-bottom:1px solid rgba(148,163,184,.07); }
+  .info-row:last-child { border-bottom:none; }
+  .info-key { color:var(--bc-text-muted); font-weight:500; min-width:110px; }
+  .info-val { font-weight:700; color:var(--bc-navy); }
+
+  /* ── PRINT ── */
+  @media print {
+    .no-print { display:none!important; }
+    .bc-table, .chart-container, .form-card { page-break-inside: avoid; }
+    .row.mb-4 + .row { page-break-before: auto; }
+    .print-section-title {
+      font-size:.7rem; text-transform:uppercase; letter-spacing:1.2px;
+      color:#64748b; font-weight:800; border-bottom:2px solid #e2e8f0;
+      padding-bottom:.4rem; margin-bottom:.8rem;
+    }
+    .cron-table { font-size:8.5px; }
+    .cron-table thead th, .cron-table tbody td { padding:.3rem .35rem; }
+    .indicator-box { border:1px solid #e2e8f0 !important; break-inside: avoid; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+
+<!-- ──── PRINT HEADER ──── -->
+<div class="print-header">
+  <div class="print-logo">Bocho<span>Credit</span></div>
+  <div class="print-sub">Cotización de Crédito Vehicular — Documento Confidencial</div>
+  <div class="print-date" style="margin-top:.5rem;font-size:.8rem;color:#64748b">
+    Crédito #{{ credito.id }} · {{ credito.cliente_nombre }} · {{ credito.marca }} {{ credito.modelo }} {{ credito.anio }}
+  </div>
+</div>
+
+<!-- ──── KPI INDICATORS ──── -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3 col-6">
+    <div class="indicator-box">
+      <div class="ind-label"><i class="bi bi-percent me-1" style="color:var(--bc-rose)"></i>TCEA (SBS)</div>
+      <div class="ind-val ind-negative">{{ credito.tcea }}%</div>
+      <div class="ind-sub">Costo Efectivo Anual</div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="indicator-box">
+      <div class="ind-label"><i class="bi bi-graph-down me-1" style="color:var(--bc-rose)"></i>VAN (Deudor)</div>
+      <div class="ind-val ind-negative">{{ "{:,.2f}".format(credito.van) }}</div>
+      <div class="ind-sub">Valor Actual Neto</div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="indicator-box" style="--ind-color:var(--bc-violet)">
+      <div class="ind-label"><i class="bi bi-graph-up me-1" style="color:var(--bc-violet)"></i>TIR Mensual</div>
+      <div class="ind-val" style="color:var(--bc-violet)">{{ credito.tir }}%</div>
+      <div class="ind-sub">Tasa Interna de Retorno</div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="indicator-box">
+      <div class="ind-label"><i class="bi bi-cash-stack me-1" style="color:var(--bc-blue)"></i>Saldo Financiado</div>
+      <div class="ind-val" style="color:var(--bc-navy)">
+        {{ "S/" if credito.moneda=='soles' else "$" }} {{ "{:,.2f}".format(credito.saldo_financiado) }}
+      </div>
+      <div class="ind-sub">{{ credito.plazo_meses }} cuotas mensuales</div>
+    </div>
+  </div>
+</div>
+
+<!-- ──── INFO CARDS ──── -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="form-card h-100">
+      <div class="section-title">Cliente</div>
+      <div style="font-size:1.05rem;font-weight:800;color:var(--bc-navy);margin-bottom:.5rem">{{ credito.cliente_nombre }}</div>
+      <div class="info-row"><span class="info-key">DNI</span><span class="info-val">{{ credito.dni }}</span></div>
+      <div class="info-row"><span class="info-key">Email</span><span class="info-val">{{ credito.email or '—' }}</span></div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="form-card h-100">
+      <div class="section-title">Vehículo</div>
+      <div style="font-size:1.05rem;font-weight:800;color:var(--bc-navy);margin-bottom:.5rem">{{ credito.marca }} {{ credito.modelo }}</div>
+      <div class="info-row"><span class="info-key">Año</span><span class="info-val">{{ credito.anio }}</span></div>
+      <div class="info-row"><span class="info-key">Precio</span><span class="info-val">{{ "S/" if credito.moneda=='soles' else "$" }} {{ "{:,.2f}".format(credito.precio_vehiculo) }}</span></div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="form-card h-100">
+      <div class="section-title">Condiciones del Crédito</div>
+      <div class="info-row"><span class="info-key">Moneda</span><span class="info-val">{{ "Soles S/" if credito.moneda=='soles' else "Dólares $" }}</span></div>
+      <div class="info-row"><span class="info-key">Cuota Inicial</span><span class="info-val">{{ credito.cuota_inicial_pct }}%</span></div>
+      <div class="info-row"><span class="info-key">Método</span><span class="info-val">
+        {% if credito.metodo_pago == 'compra_inteligente' %}Compra Inteligente
+        {% elif credito.metodo_pago == 'aleman' %}Método Alemán
+        {% elif credito.metodo_pago == 'americano' %}Método Americano
+        {% elif credito.metodo_pago == 'peruano' %}Método Peruano
+        {% else %}Método Francés{% endif %}
+      </span></div>
+      {% if credito.metodo_pago=='compra_inteligente' %}
+      <div class="info-row"><span class="info-key">Cuota Final</span><span class="info-val">{{ (credito.pct_cuota_final * 100)|round(2) }}%</span></div>
+      <div class="info-row"><span class="info-key">Tasa COK</span><span class="info-val">{{ (credito.cok * 100)|round(2) }}%</span></div>
+      {% endif %}
+      <div class="info-row"><span class="info-key">Tipo Tasa</span><span class="info-val">{{ credito.tipo_tasa.replace('_',' ').upper() }}</span></div>
+      <div class="info-row"><span class="info-key">Tasa</span><span class="info-val">{{ credito.tasa_valor }}%</span></div>
+      <div class="info-row"><span class="info-key">TEM</span><span class="info-val">{{ "%.6f"|format(credito.tem*100) }}%</span></div>
+      <div class="info-row"><span class="info-key">Período Gracia</span><span class="info-val">{{ credito.gracia_tipo }} ({{ credito.gracia_meses }}m)</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ──── ACTIONS ──── -->
+<div class="d-flex gap-2 mb-4 align-items-center no-print">
+  {% if credito.es_elegido == 'NO' %}
+  <form action="{{ url_for('credito_elegir', crid=credito.id) }}" method="POST" class="m-0">
+    <button type="submit" class="btn btn-bc-gold px-4">
+      <i class="bi bi-check-circle me-1"></i> Elegir Plan de Pagos
+    </button>
+  </form>
+  {% else %}
+  <button class="btn px-4" style="background:linear-gradient(135deg,#dcfce7,#bbf7d0);color:#15803d;border:none;border-radius:10px;font-weight:700;cursor:default" disabled>
+    <i class="bi bi-check-circle-fill me-1"></i> Plan Elegido y Activo
+  </button>
+  {% endif %}
+  <a href="{{ url_for('credito_editar', crid=credito.id) }}" class="btn btn-bc-primary px-4">
+    <i class="bi bi-pencil me-1"></i> Editar / Recalcular
+  </a>
+  <button class="btn px-4" onclick="window.print()"
+          style="background:rgba(148,163,184,.12);border:1.5px solid rgba(148,163,184,.2);border-radius:10px;font-weight:700;font-size:.87rem;color:var(--bc-navy);transition:all .2s"
+          onmouseover="this.style.background='rgba(148,163,184,.2)'"
+          onmouseout="this.style.background='rgba(148,163,184,.12)'">
+    <i class="bi bi-printer me-1"></i> Imprimir Cotización
+  </button>
+  <a href="{{ url_for('creditos') }}" class="btn px-4"
+     style="background:transparent;border:1.5px solid rgba(148,163,184,.2);border-radius:10px;font-weight:700;font-size:.87rem;color:var(--bc-text-muted)">
+    ← Volver
+  </a>
+</div>
+
+<!-- ──── CHARTS ──── -->
+{% if cronograma|length > 1 %}
+<div class="row g-3 mb-4 no-print">
+  <div class="col-md-6">
+    <div class="chart-container">
+      <div class="chart-title">📉 Evolución del Saldo Deudor</div>
+      <div style="font-size:.75rem;color:var(--bc-text-muted);margin-bottom:.8rem">Curva de amortización período a período</div>
+      <div id="chartSaldo" style="min-height:240px"></div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="chart-container">
+      <div class="chart-title">📊 Composición de la Cuota</div>
+      <div style="font-size:.75rem;color:var(--bc-text-muted);margin-bottom:.8rem">Capital vs. Intereses vs. Seguros por período</div>
+      <div id="chartComposicion" style="min-height:240px"></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ──── CRONOGRAMA ──── -->
+{% if credito.metodo_pago == 'compra_inteligente' %}
+<div class="bc-table">
+  <div class="px-4 py-3 d-flex align-items-center justify-content-between" style="border-bottom:1px solid rgba(148,163,184,.1)">
+    <span style="font-weight:800;color:var(--bc-navy);font-size:.92rem">
+      <i class="bi bi-table me-2" style="color:var(--bc-blue)"></i>Cronograma de Pagos — Compra Inteligente
+    </span>
+    <span style="font-size:.75rem;color:var(--bc-text-muted);background:var(--bc-light);padding:.25rem .7rem;border-radius:999px;font-weight:600">{{ cronograma|length }} períodos</span>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="table cron-table">
+      <thead>
+        <tr>
+          <th>#</th><th>P.G.</th>
+          <th>S.I. Cuota Final</th><th>Int. CF</th><th>Seg.Desg. CF</th><th>S.F. CF</th>
+          <th>S.I. Regular</th><th>Interés</th><th>Cuota Regular</th><th>Amort.</th>
+          <th>Seg. Desgrav.</th><th>Seg. Vehicular</th><th>GPS</th><th>Portes</th><th>Gasto Admin</th>
+          <th style="color:var(--bc-navy)">Cuota Total</th><th>Saldo Final</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in cronograma %}
+        <tr class="{% if f.pg == 'T' or f.pg == 'P' %}grace-row{% endif %}">
+          <td>{{ f.periodo }}</td>
+          <td><span class="badge {% if f.pg=='T' %}bg-danger{% elif f.pg=='P' %}bg-warning{% else %}bg-success{% endif %}" style="font-size:.65rem">{{ f.pg }}</span></td>
+          <td>{{ "{:,.2f}".format(f.saldo_inicial_cf) }}</td>
+          <td>{{ "{:,.2f}".format(f.interes_cf) }}</td>
+          <td>{{ "{:,.2f}".format(f.seg_desgrav_cf) }}</td>
+          <td>{{ "{:,.2f}".format(f.saldo_final_cf) }}</td>
+          <td>{{ "{:,.2f}".format(f.saldo_inicial) }}</td>
+          <td>{{ "{:,.2f}".format(f.interes) }}</td>
+          <td>{{ "{:,.2f}".format(f.cuota_capital) }}</td>
+          <td>{{ "{:,.2f}".format(f.amort) }}</td>
+          <td>{{ "{:,.2f}".format(f.seg_desgrav) }}</td>
+          <td>{{ "{:,.2f}".format(f.seg_veh) }}</td>
+          <td>{{ "{:,.2f}".format(f.gps) }}</td>
+          <td>{{ "{:,.2f}".format(f.portes) }}</td>
+          <td>{{ "{:,.2f}".format(f.gastos_admin) }}</td>
+          <td><strong style="color:var(--bc-navy)">{{ "{:,.2f}".format(f.cuota_total) }}</strong></td>
+          <td>{{ "{:,.2f}".format(f.saldo_final) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:linear-gradient(90deg,rgba(59,130,246,.05),rgba(6,182,212,.05));font-weight:800">
+          <td>TOTAL</td><td>—</td><td>—</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='interes_cf')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='seg_desgrav_cf')) }}</td>
+          <td>—</td><td>—</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='interes')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='cuota_capital')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='amort')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='seg_desgrav')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='seg_veh')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='gps')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='portes')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='gastos_admin')) }}</td>
+          <td style="color:var(--bc-navy)">{{ "{:,.2f}".format(cronograma|sum(attribute='cuota_total')) }}</td>
+          <td>—</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="bc-table">
+  <div class="px-4 py-3 d-flex align-items-center justify-content-between" style="border-bottom:1px solid rgba(148,163,184,.1)">
+    <span style="font-weight:800;color:var(--bc-navy);font-size:.92rem">
+      <i class="bi bi-table me-2" style="color:var(--bc-blue)"></i>
+      Cronograma de Pagos —
+      {% if credito.metodo_pago == 'aleman' %}Método Alemán
+      {% elif credito.metodo_pago == 'americano' %}Método Americano
+      {% elif credito.metodo_pago == 'peruano' %}Método Peruano
+      {% else %}Método Francés{% endif %}
+    </span>
+    <span style="font-size:.75rem;color:var(--bc-text-muted);background:var(--bc-light);padding:.25rem .7rem;border-radius:999px;font-weight:600">{{ cronograma|length }} períodos</span>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="table cron-table">
+      <thead>
+        <tr>
+          <th>#</th><th>Saldo Inicial</th><th>Interés</th><th>Amort.</th>
+          <th>Cuota Capital</th><th>Seg. Desgrav.</th><th>Seg. Vehicular</th>
+          <th>Portes</th><th style="color:var(--bc-navy)">Cuota Total</th><th>Saldo Final</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in cronograma %}
+        <tr class="{% if credito.gracia_tipo != 'ninguno' and f.periodo <= credito.gracia_meses %}grace-row{% endif %}">
+          <td>{{ f.periodo }}</td>
+          <td>{{ "{:,.2f}".format(f.saldo_inicial) }}</td>
+          <td>{{ "{:,.2f}".format(f.interes) }}</td>
+          <td>{{ "{:,.2f}".format(f.amort) }}</td>
+          <td>{{ "{:,.2f}".format(f.cuota_capital) }}</td>
+          <td>{{ "{:,.2f}".format(f.seg_desgrav) }}</td>
+          <td>{{ "{:,.2f}".format(f.seg_veh) }}</td>
+          <td>{{ "{:,.2f}".format(f.portes) }}</td>
+          <td><strong style="color:var(--bc-navy)">{{ "{:,.2f}".format(f.cuota_total) }}</strong></td>
+          <td>{{ "{:,.2f}".format(f.saldo_final) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:linear-gradient(90deg,rgba(59,130,246,.05),rgba(6,182,212,.05));font-weight:800">
+          <td>TOTAL</td><td>—</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='interes')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='amort')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='cuota_capital')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='seg_desgrav')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='seg_veh')) }}</td>
+          <td>{{ "{:,.2f}".format(cronograma|sum(attribute='portes')) }}</td>
+          <td style="color:var(--bc-navy)">{{ "{:,.2f}".format(cronograma|sum(attribute='cuota_total')) }}</td>
+          <td>—</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if credito.gracia_tipo != 'ninguno' %}
+<div class="mt-2 no-print" style="font-size:.78rem;color:var(--bc-gold);font-weight:600">
+  <i class="bi bi-info-circle me-1"></i>
+  Las filas amarillas corresponden al período de gracia <strong>{{ credito.gracia_tipo }}</strong>.
+</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script type="application/json" id="cron-data">
+  {{ cronograma | tojson }}
+</script>
+<script>
+const CRON_DATA = JSON.parse(document.getElementById('cron-data').textContent);
+const SYM = "{{ 'S/' if credito.moneda=='soles' else '$' }}";
+const IS_CI = "{{ credito.metodo_pago }}" === "compra_inteligente";
+
+if (CRON_DATA.length > 0) {
+  const periodods = CRON_DATA.map(f => f.periodo);
+
+  // ── Chart 1: Saldo deudor ──
+  const saldos = CRON_DATA.map(f => parseFloat((IS_CI ? f.saldo_final_cf || f.saldo_final : f.saldo_final).toFixed(2)));
+  new ApexCharts(document.getElementById('chartSaldo'), {
+    chart: { type: 'area', height: 240, fontFamily: 'Plus Jakarta Sans, sans-serif',
+             toolbar: { show: false }, sparkline: { enabled: false },
+             animations: { enabled: true, easing: 'easeinout', speed: 700 } },
+    series: [{ name: 'Saldo Deudor', data: saldos }],
+    xaxis: {
+      categories: periodods,
+      tickAmount: Math.min(12, periodods.length),
+      labels: { style: { fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize:'10px', colors:'#94a3b8' } }
+    },
+    yaxis: {
+      labels: {
+        formatter: v => SYM + ' ' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v.toFixed(0)),
+        style: { fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize:'10px', colors:'#94a3b8' }
+      }
+    },
+    colors: ['#3b82f6'],
+    fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical',
+            gradientToColors: ['#06b6d4'], stops: [0, 100], opacityFrom: 0.35, opacityTo: 0.05 } },
+    stroke: { curve: 'smooth', width: 2.5 },
+    grid: { borderColor: 'rgba(148,163,184,.1)', strokeDashArray: 4 },
+    dataLabels: { enabled: false },
+    tooltip: {
+      y: { formatter: v => SYM + ' ' + v.toLocaleString('es-PE', {minimumFractionDigits:2}) },
+      style: { fontFamily: 'Plus Jakarta Sans, sans-serif' }
+    }
+  }).render();
+
+  // ── Chart 2: Composición de cuota ──
+  // Sample every N periods to keep the chart readable (max 36 bars)
+  const step = Math.max(1, Math.floor(CRON_DATA.length / 36));
+  const sampled = CRON_DATA.filter((_, i) => i % step === 0 || i === CRON_DATA.length - 1);
+  const cats    = sampled.map(f => f.periodo);
+  const amorts  = sampled.map(f => parseFloat((f.amort || 0).toFixed(2)));
+  const interes = sampled.map(f => parseFloat((f.interes || 0).toFixed(2)));
+  const seguros = sampled.map(f => parseFloat(((f.seg_desgrav||0) + (f.seg_veh||0)).toFixed(2)));
+
+  new ApexCharts(document.getElementById('chartComposicion'), {
+    chart: { type: 'bar', stacked: true, height: 240, fontFamily: 'Plus Jakarta Sans, sans-serif',
+             toolbar: { show: false },
+             animations: { enabled: true, easing: 'easeinout', speed: 700 } },
+    series: [
+      { name: 'Capital (Amort.)', data: amorts },
+      { name: 'Intereses', data: interes },
+      { name: 'Seguros', data: seguros }
+    ],
+    colors: ['#3b82f6', '#f43f5e', '#10b981'],
+    xaxis: {
+      categories: cats,
+      tickAmount: Math.min(12, cats.length),
+      labels: { style: { fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize:'10px', colors:'#94a3b8' } }
+    },
+    yaxis: {
+      labels: {
+        formatter: v => SYM + ' ' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v.toFixed(0)),
+        style: { fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize:'10px', colors:'#94a3b8' }
+      }
+    },
+    plotOptions: { bar: { borderRadius: 3, columnWidth: '80%' } },
+    dataLabels: { enabled: false },
+    grid: { borderColor: 'rgba(148,163,184,.1)', strokeDashArray: 4 },
+    legend: {
+      position: 'top', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize:'11px',
+      markers: { width:8, height:8, radius:4 }
+    },
+    tooltip: {
+      y: { formatter: v => SYM + ' ' + v.toLocaleString('es-PE', {minimumFractionDigits:2}) },
+      style: { fontFamily: 'Plus Jakarta Sans, sans-serif' }
+    }
+  }).render();
+}
+</script>
+{% endblock %}
