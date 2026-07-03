@@ -18,25 +18,56 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+
+def admin_required(f):
+
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("rol") == "ADMIN":
+            flash("Acceso denegado: no tiene los permisos adecuados.", "danger")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+@app.before_request
+def enforce_password_change():
+    if session.get("user_id") and session.get("must_change_password", False):
+        allowed_endpoints = {"cambiar_password", "logout", "static"}
+        current = request.endpoint
+
+        if current not in allowed_endpoints:
+            return redirect(url_for("cambiar_password", uid=session["user_id"]))
+
+
 @app.route("/", methods=["GET","POST"])
 def login():
-    if "user_id" in session:
-        return redirect(url_for("dashboard"))
     error = None
     if request.method == "POST":
         u = request.form["username"]
         p = request.form["password"]
         resp = requests.post(f"{BACKEND_URL}/auth/login", json={"username": u, "password": p})
 
-        if resp.status_code == 200:
-            data = resp.json()
-            session["user_id"] = data["userId"]
-            session["username"] = data["username"]
-            session["nombre"] = data["nombreCompleto"]
-            session["token"] = data["token"]
-            return redirect(url_for("dashboard"))
+        data = resp.json()
+        session["user_id"] = data["userId"]
+        session["username"] = data["username"]
+        session["nombre"] = data["nombreCompleto"]
+        session["token"] = data["token"]
+        session["rol"] = data["rol"]
 
-        error = "Usuario o contraseña incorrectos."
+        if not resp.ok:
+            error = "Usuario o contraseña incorrectos."
+            return render_template("login.html", error=error)
+
+        # Check if backend requires password change
+        r = requests.get(f"{BACKEND_URL}/usuarios/renovar-password/{session['user_id']}", headers=_auth_headers())
+        if r.json() == True:
+            session["must_change_password"] = True
+            flash("Debe cambiar su contraseña antes de continuar.", "warning")
+            return redirect(url_for("cambiar_password", uid=session["user_id"]))
+
+        return redirect(url_for("dashboard"))
     return render_template("login.html", error=error)
 
 
@@ -93,9 +124,6 @@ def dashboard():
 def clientes():
     headers = _auth_headers()
     resp = requests.get(f"{BACKEND_URL}/clientes", headers=headers)
-    print("\n\n\n")
-    print(resp)
-    print("\n\n\n")
     rows = resp.json()
     return render_template("clientes.html", clientes=rows)
 
@@ -340,6 +368,76 @@ def credito_editar(crid):
         return redirect(url_for("creditos"))
 
     return render_template("credito_form.html", clientes=clientes, credito=credito, titulo="Editar Crédito")
+
+
+# ─────────────────────────────────────────────
+# Usuarios
+# ─────────────────────────────────────────────
+@app.route("/usuarios")
+@login_required
+@admin_required
+def usuarios():
+    headers = _auth_headers()
+    resp = requests.get(f"{BACKEND_URL}/usuarios", headers=headers)
+    rows = resp.json()
+    return render_template("usuarios.html", usuarios=rows)
+
+
+
+@app.route("/usuarios/nuevo", methods=["GET", "POST"])
+@login_required
+@admin_required
+def usuario_nuevo():
+    headers = _auth_headers()
+    if request.method == "POST":
+        f = request.form.to_dict()
+        f["rol"] = f.get("rol", 2)
+        f["nombreCompleto"] = f.get("nombres", "") + " " + f.get("apellidos", "")
+        del f["nombres"]
+        del f["apellidos"]
+        resp = requests.post(f"{BACKEND_URL}/usuarios", json=f, headers=headers)
+        if resp.status_code in (200, 201):
+            data = resp.json()
+            flash(f"Usuario creado exitosamente. Su contraseña es {data.get('password')}", "success")
+            return redirect(url_for("usuarios"))
+        else:
+            flash("Error al crear empleado.", "danger")
+    return render_template("usuario_form.html", usuario=None, titulo="Nuevo Empleado")
+
+
+@app.route("/usuarios/cambiar_password/<int:uid>", methods=["GET", "POST"])
+@login_required
+def cambiar_password(uid):
+    headers = _auth_headers()
+    if request.method == "POST":
+        f = request.form.to_dict()
+
+        payload = {
+            "username": session["username"],
+            "passwordAntigua": f.get("passwordAntigua"),
+            "passwordNueva": f.get("passwordNueva")
+        }
+
+        resp = requests.patch(f"{BACKEND_URL}/usuarios/cambiar-password/{uid}", json=payload, headers=headers)
+        if resp.json():
+            flash("Contraseña actualizada.", "success")
+            session["must_change_password"] = False
+            return redirect(url_for("dashboard"))
+        else:
+            flash("Error al actualizar contraseña.", "danger")
+
+    # GET: show form
+    return render_template("password_form.html", usuario_id=uid, titulo="Cambiar Contraseña")
+
+
+@app.route("/usuarios/<int:uid>/eliminar", methods=["POST"])
+@login_required
+@admin_required
+def usuario_eliminar(uid):
+    headers = _auth_headers()
+    requests.delete(f"{BACKEND_URL}/usuarios/{uid}", headers=headers)
+    flash("Usuario eliminado.", "warning")
+    return redirect(url_for("usuarios"))
 
 
 if __name__ == "__main__":

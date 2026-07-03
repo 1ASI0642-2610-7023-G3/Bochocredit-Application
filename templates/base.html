@@ -149,6 +149,13 @@
     <a href="{{ url_for('creditos') }}" class="{% if 'credito' in request.endpoint %}active{% endif %}">
       <i class="bi bi-file-earmark-text"></i> Créditos
     </a>
+
+    {% if session.rol == "ADMIN" %}
+    <a href="{{ url_for('usuarios') }}" class="{% if 'usuario' in request.endpoint %}active{% endif %}">
+      <i class="bi bi-file-earmark-text"></i> Empleados
+    </a>
+    {% endif %}
+
     <div class="nav-section">Acciones</div>
     <a href="{{ url_for('credito_nuevo') }}">
       <i class="bi bi-calculator"></i> Nueva Oferta
