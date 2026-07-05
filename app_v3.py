@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, make_response
 import json, math, functools, os
 import requests
 
@@ -49,6 +49,10 @@ def login():
         p = request.form["password"]
         resp = requests.post(f"{BACKEND_URL}/auth/login", json={"username": u, "password": p})
 
+        if not resp.ok:
+            error = "Usuario o contraseña incorrectos."
+            return render_template("login.html", error=error)
+
         data = resp.json()
         session["user_id"] = data["userId"]
         session["username"] = data["username"]
@@ -56,9 +60,6 @@ def login():
         session["token"] = data["token"]
         session["rol"] = data["rol"]
 
-        if not resp.ok:
-            error = "Usuario o contraseña incorrectos."
-            return render_template("login.html", error=error)
 
         # Check if backend requires password change
         r = requests.get(f"{BACKEND_URL}/usuarios/renovar-password/{session['user_id']}", headers=_auth_headers())
@@ -124,7 +125,15 @@ def dashboard():
 def clientes():
     headers = _auth_headers()
     resp = requests.get(f"{BACKEND_URL}/clientes", headers=headers)
-    rows = resp.json()
+    try:
+        rows = resp.json()
+
+
+    except ValueError:
+        print(resp)
+        print(resp.status_code, resp.headers)
+        print("Response was not JSON:", resp.text)
+        rows = []
     return render_template("clientes.html", clientes=rows)
 
 
@@ -258,7 +267,11 @@ def credito_detalle(crid):
     headers = _auth_headers()
     resp = requests.get(f"{BACKEND_URL}/creditos/{crid}", headers=headers)  # TODO
     credito = resp.json()
-    return render_template("credito_detalle.html", credito=credito, cronograma=credito.get("cronograma", []))
+
+    resp = requests.get(f"{BACKEND_URL}/creditos/pagos/{crid}", headers=headers)  # TODO
+    pagos = resp.json()
+
+    return render_template("credito_detalle.html", credito=credito, cronograma=pagos)
 
 
 @app.route("/creditos/<int:crid>/elegir", methods=["POST"])
@@ -268,6 +281,49 @@ def credito_elegir(crid):
     requests.patch(f"{BACKEND_URL}/creditos/{crid}/elegir", headers=headers)  # TODO
     flash("Crédito elegido.", "success")
     return redirect(url_for("creditos"))
+
+
+def getCapitalizacion(capi: str) -> int:
+    return int(capi)
+
+
+def getCreditoRequest(f):
+    return {
+        "moneda": f.get("moneda", "soles"),
+        "valorVenta": float(f.get("valorVenta")),
+        
+        "cuotaInicialPct": float(f.get("cuotaInicialPct")),
+        "cuotaFinalPct": float(f.get("cuotaFinalPct")),
+
+        "tipoTasa": f.get("tipoTasa"),
+        "capitalizacion": int(getCapitalizacion(f.get("capitalizacion"))),
+        "tasaInteres": float(f.get("tasaInteres")),
+        
+        "plazoMeses": int(f.get("plazoMeses")),
+        
+        "tipoGracia": f.get("tipoGracia"),
+        "periodoGraciaMeses": int(f.get("periodoGraciaMeses")),
+
+        "seguroDesgPct": float(f.get("seguroDesgPct")),
+        "seguroVehicularPct": float(f.get("seguroVehicularPct")),
+
+        "gastosIniciales": {
+            "NOTARIAL": float(f.get("notariales")),
+            "REGISTRAL": float(f.get("registrales"))
+        },
+        "gastosPeriodicos": {
+            "Portes": float(f.get("portes")),
+            "Admin": float(f.get("admin")),
+            "Gps": float(f.get("gps"))
+        },
+
+        "cok": float(f.get("cok")),
+
+        "clienteId": int(f.get("clienteId")),
+        "vehiculoId": int(f.get("vehiculoId")),
+        "usuarioId": session.get("user_id")
+    }
+
 
 
 @app.route("/creditos/nuevo", methods=["GET", "POST"])
@@ -286,24 +342,10 @@ def credito_nuevo():
         if request.method == "POST":
             f = request.form.to_dict()
             # Convertir tipos numéricos si el backend lo requiere
-            payload = {
-                "cliente_id": int(f.get("cliente_id")),
-                "vehiculo_id": int(f.get("vehiculo_id")),
-                "precio_vehiculo": float(f.get("precio_vehiculo")),
-                "cuota_inicial_pct": float(f.get("cuota_inicial_pct")),
-                "tipo_tasa": f.get("tipo_tasa"),
-                "tasa_valor": float(f.get("tasa_valor")),
-                "capitalizacion": f.get("capitalizacion", "mensual"),
-                "plazo_meses": int(f.get("plazo_meses")),
-                "gracia_tipo": f.get("gracia_tipo"),
-                "gracia_meses": int(f.get("gracia_meses", 0)),
-                "tsd": float(f.get("tsd")) / 100,
-                "tsv": float(f.get("tsv")) / 100,
-                "portes": float(f.get("portes", 0)),
-                "moneda": f.get("moneda", "PEN")
-            }
-            # TODO: endpoint backend para crear simulación/crédito
-            resp = requests.post(f"{BACKEND_URL}/creditos", json=payload, headers=headers)  # TODO
+            rBody = getCreditoRequest(f)
+
+            resp = requests.post(f"{BACKEND_URL}/creditos", json=rBody, headers=headers)  # TODO
+            
             if resp.status_code in (200, 201):
                 flash("Crédito calculado y guardado.", "success")
                 return redirect(url_for("creditos"))
@@ -320,6 +362,7 @@ def credito_nuevo():
         return redirect(url_for("creditos"))
 
     return render_template("credito_form.html", clientes=clientes, vehiculos=vehiculos, titulo="Nueva Oferta de Crédito")
+
 
 
 @app.route("/creditos/<int:crid>/editar", methods=["GET", "POST"])
@@ -340,22 +383,8 @@ def credito_editar(crid):
 
         if request.method == "POST":
             f = request.form.to_dict()
-            payload = {
-                "cliente_id": int(f.get("cliente_id")),
-                "vehiculo_id": int(f.get("vehiculo_id")),
-                "precio_vehiculo": float(f.get("precio_vehiculo")),
-                "cuota_inicial_pct": float(f.get("cuota_inicial_pct")),
-                "tipo_tasa": f.get("tipo_tasa"),
-                "tasa_valor": float(f.get("tasa_valor")),
-                "capitalizacion": f.get("capitalizacion", "mensual"),
-                "plazo_meses": int(f.get("plazo_meses")),
-                "gracia_tipo": f.get("gracia_tipo"),
-                "gracia_meses": int(f.get("gracia_meses", 0)),
-                "tsd": float(f.get("tsd")) / 100,
-                "tsv": float(f.get("tsv")) / 100,
-                "portes": float(f.get("portes", 0)),
-                "moneda": f.get("moneda", "PEN")
-            }
+            payload = getCreditoRequest(f)
+
             resp = requests.put(f"{BACKEND_URL}/creditos/{crid}", json=payload, headers=headers)  # TODO
             if resp.ok:
                 flash("Crédito recalculado y actualizado.", "success")
@@ -368,6 +397,9 @@ def credito_editar(crid):
         return redirect(url_for("creditos"))
 
     return render_template("credito_form.html", clientes=clientes, credito=credito, titulo="Editar Crédito")
+
+
+
 
 
 # ─────────────────────────────────────────────

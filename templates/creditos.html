@@ -11,7 +11,7 @@
 <div class="bc-table">
   <table class="table">
     <thead>
-      <tr><th>#</th><th>Cliente</th><th>Vehículo</th><th>Moneda</th><th>S. Financiado</th><th>Plazo</th><th>TCEA</th><th>VAN</th><th>TIR</th><th>Fecha</th><th></th></tr>
+      <tr><th>#</th><th>Cliente</th><th>Vehículo</th><th>Moneda</th><th>Préstamo</th><th>Plazo</th><th>TCEA</th><th>VAN</th><th>TIR</th><th>Fecha</th><th>Acciones</th></tr>
     </thead>
     <tbody>
       {% for c in creditos %}
@@ -26,12 +26,13 @@
           <span class="badge badge-usd px-2">$</span>
           {% endif %}
         </td>
-        <td>{{ "{:,.2f}".format(c.saldo_financiado) }}</td>
-        <td>{{ c.plazo_meses }} m</td>
-        <td><strong style="color:#dc2626">{{ c.tcea }}%</strong></td>
-        <td style="color:#dc2626">{{ "{:,.2f}".format(c.van) }}</td>
+        <td><strong style="color:#dc2626">{{ "{:,.2f}".format(c.prestamo) }}</strong></td>
+        <td>{{ c.plazoMeses }} m</td>
+        <td><strong style="color:#262fdc">{{ c.tcea }}%</strong></td>
+        <td style="color:#262fdc">{{ "{:,.2f}".format(c.van) }}</td>
         <td>{{ c.tir }}%</td>
-        <td class="text-muted" style="font-size:.78rem">{{ c.created_at[:10] }}</td>
+        <td>{{ c.creadoEn[8:10] }}/{{ c.creadoEn[5:7] }}/{{ c.creadoEn[0:4] }}</td>
+
         <td>
           <a href="{{ url_for('credito_detalle', crid=c.id) }}" class="btn btn-sm" style="color:#1a56db"><i class="bi bi-eye"></i></a>
           <a href="{{ url_for('credito_editar', crid=c.id) }}" class="btn btn-sm" style="color:#d97706"><i class="bi bi-pencil"></i></a>
