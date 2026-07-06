@@ -110,7 +110,7 @@
       <div class="row g-3">
 
         <!-- Moneda -->
-        <div class="col-md-4">
+        <div class="col-md-5">
           <label class="form-label">Moneda *</label>
           <select name="moneda" class="form-select" id="monedaSelect">
             <option value="soles" {% if not credito or credito.moneda == "soles" %}selected{% endif %}>S/ Soles</option>
@@ -119,20 +119,20 @@
         </div>
 
         <!-- Valor de Venta -->
-        <div class="col-md-8">
+        <div class="col-md-7">
           <label class="form-label">Precio del Vehículo</label>
           <div class="input-group">
             <span class="input-group-text" id="monedaSymbol">S/</span>
             <input type="number" name="valorVenta" id="valorVenta"
                    class="form-control" step="0.01" min="0"
                    value="{{ credito.valorVenta if credito else '' }}"
-                   placeholder="—" readonly
+                   placeholder="—"
                    title="Se autocompleta al seleccionar el vehículo">
           </div>
         </div>
 
         <!-- Cuota inicial -->
-        <div class="col-md-4">
+        <div class="col-md-5">
           <label class="form-label">Cuota Inicial (%)</label>
           <div class="input-group">
             <input type="number" name="cuotaInicialPct" id="cuotaInicialPct"
@@ -142,21 +142,11 @@
           </div>
         </div>
 
-        <!-- Saldo financiado -->
-        <div class="col-md-4">
-          <label class="form-label">Saldo Financiado</label>
-          <div class="input-group">
-            <span class="input-group-text" id="sfSymbol">S/</span>
-            <input type="text" id="saldoFinanciadoDisplay" class="form-control"
-                   value="" placeholder="—" readonly>
-          </div>
-        </div>
-
         <!-- Plazo -->
-        <div class="col-md-4">
+        <div class="col-md-7">
           <label class="form-label">Plazo (meses) *</label>
           <select name="plazoMeses" class="form-select" id="plazoMeses">
-            {% for p in [12,18,24,36,48,60,72,84] %}
+            {% for p in [12,18,24,36,48,60] %}
             <option value="{{ p }}"
               {% if credito and credito.plazoMeses == p %}selected
               {% elif not credito and p == 36 %}selected{% endif %}>
@@ -167,7 +157,7 @@
         </div>
 
         <!-- % Cuota final -->
-        <div class="col-md-4">
+        <div class="col-md-5">
           <label class="form-label">% Cuota Final</label>
           <div class="input-group">
             <input type="number" name="cuotaFinalPct" id="cuotaFinalPct"
@@ -178,7 +168,7 @@
         </div>
 
         <!-- COK -->
-        <div class="col-md-4">
+        <div class="col-md-7">
           <label class="form-label">COK anual (%)</label>
           <div class="input-group">
             <input type="number" name="cok" id="cok"
@@ -212,7 +202,7 @@
           <div class="input-group">
             <input type="number" name="tasaInteres" id="tasaInteres"
                    class="form-control" step="0.001" min="0"
-                   value="{{ credito.tasaValor if credito else 15 }}" required>
+                   value="{{ credito.tasaValor if credito else 20 }}" required>
             <span class="input-group-text">%</span>
           </div>
         </div>
@@ -303,7 +293,7 @@
             <span class="input-group-text monedaSym">S/</span>
             <input type="number" name="admin" id="admin"
                   class="form-control" step="0.01" min="0"
-                  value="{{ credito.gastosAdmin if credito else 0 }}">
+                  value="{{ credito.gastosAdmin if credito else 25 }}">
           </div>
         </div>
 
@@ -314,7 +304,7 @@
             <span class="input-group-text monedaSym">S/</span>
             <input type="number" name="gps" id="gps"
                   class="form-control" step="0.01" min="0"
-                  value="{{ credito.gps if credito else 0 }}">
+                  value="{{ credito.gps if credito else 10 }}">
           </div>
         </div>
       </div>
@@ -329,7 +319,7 @@
             <span class="input-group-text monedaSym">S/</span>
             <input type="number" name="notariales" id="notariales"
                   class="form-control" step="0.01" min="0"
-                  value="{{ 0 }}">
+                  value="{{ 200 }}">
           </div>
         </div>
 
@@ -340,7 +330,7 @@
             <span class="input-group-text monedaSym">S/</span>
             <input type="number" name="registrales" id="registrales"
                   class="form-control" step="0.01" min="0"
-                  value="{{ 0 }}">
+                  value="{{ 350 }}">
           </div>
         </div>
       </div>
@@ -517,35 +507,32 @@ document.getElementById('tipoGracia').addEventListener('change', () => { actuali
 //  VEHÍCULO — autocompleta precio (punto 8: precio solo lectura)
 // ──────────────────────────────────────────────────────────
 
+
 window.addEventListener('DOMContentLoaded', () => {
   const vehiculoSelect = document.getElementById('vehiculoSelect');
-  if (!vehiculoSelect) {
-    return;
-  }
-  vehiculoSelect.addEventListener('change', function() {
-    const opt = this.options[this.selectedIndex];
-    const bloqEl = document.getElementById('vehiculoBloqueadoMsg');
+  const monedaSelect   = document.getElementById('monedaSelect'); // or tipoMoneda
 
-
+  function actualizarPrecio() {
+    const opt = vehiculoSelect.options[vehiculoSelect.selectedIndex];
     if (opt && opt.dataset.precio) {
       let precio = parseFloat(opt.dataset.precio) || 0;
 
       // Convert if moneda is USD
       if (getMoneda() === 'dolares') precio = precio / TC;
 
-      // Set the price field
       document.getElementById('valorVenta').value = precio.toFixed(2);
-
-      bloqEl.style.display = 'none';
-
-      // Trigger simulation
       calcular();
-    } else {
-      document.getElementById('valorVenta').value = '';
-      updateSaldoDisplay(0, 0);
     }
-  });
+  }
+
+  if (vehiculoSelect) {
+    vehiculoSelect.addEventListener('change', actualizarPrecio);
+  }
+  if (monedaSelect) {
+    monedaSelect.addEventListener('change', actualizarPrecio);
+  }
 });
+
 
 
 // ──────────────────────────────────────────────────────────
@@ -555,12 +542,6 @@ function fmt(n, sym) {
   if (n === null || n === undefined || isNaN(n)) return '—';
   sym = sym || getSym();
   return sym + ' ' + parseFloat(n).toLocaleString('es-PE', {minimumFractionDigits:2, maximumFractionDigits:2});
-}
-
-function updateSaldoDisplay(precio, ciPct) {
-  const sf = precio * (1 - ciPct / 100);
-  document.getElementById('saldoFinanciadoDisplay').value =
-    sf > 0 ? sf.toFixed(2) : '';
 }
 
 

@@ -325,7 +325,6 @@ def getCreditoRequest(f):
     }
 
 
-
 @app.route("/creditos/nuevo", methods=["GET", "POST"])
 @login_required
 def credito_nuevo():
@@ -365,41 +364,14 @@ def credito_nuevo():
 
 
 
-@app.route("/creditos/<int:crid>/editar", methods=["GET", "POST"])
+@app.route("/creditos/<int:crid>/eliminar", methods=["POST", "DELETE"])
 @login_required
-def credito_editar(crid):
+def credito_eliminar(crid):
     headers = _auth_headers()
-    try:
-        # Obtener crédito actual
-        r = requests.get(f"{BACKEND_URL}/creditos/{crid}", headers=headers)  # TODO
-        if not r.ok:
-            flash("Crédito no encontrado.", "warning")
-            return redirect(url_for("creditos"))
-        credito = r.json()
+    requests.delete(f"{BACKEND_URL}/creditos/{crid}", headers=headers)
 
-        # Obtener lista de clientes para el formulario (si aplica)
-        r_clients = requests.get(f"{BACKEND_URL}/clientes", headers=headers)  # TODO
-        clientes = r_clients.json() if r_clients.ok else []
-
-        if request.method == "POST":
-            f = request.form.to_dict()
-            payload = getCreditoRequest(f)
-
-            resp = requests.put(f"{BACKEND_URL}/creditos/{crid}", json=payload, headers=headers)  # TODO
-            if resp.ok:
-                flash("Crédito recalculado y actualizado.", "success")
-                return redirect(url_for("credito_detalle", crid=crid))
-            else:
-                flash("Error al actualizar crédito.", "danger")
-
-    except requests.exceptions.RequestException:
-        flash("Error de conexión con el backend.", "danger")
-        return redirect(url_for("creditos"))
-
-    return render_template("credito_form.html", clientes=clientes, credito=credito, titulo="Editar Crédito")
-
-
-
+    flash("Crédito eliminado correctamente.", "success")
+    return redirect(url_for("creditos"))
 
 
 # ─────────────────────────────────────────────

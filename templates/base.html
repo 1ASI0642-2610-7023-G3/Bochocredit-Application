@@ -146,7 +146,7 @@
     <a href="{{ url_for('vehiculos') }}" class="{% if 'vehiculo' in request.endpoint %}active{% endif %}">
       <i class="bi bi-car-front"></i> Vehículos
     </a>
-    <a href="{{ url_for('creditos') }}" class="{% if 'credito' in request.endpoint %}active{% endif %}">
+    <a href="{{ url_for('creditos') }}" class="{% if 'credito' in request.endpoint and request.endpoint != 'credito_nuevo'  %}active{% endif %}">
       <i class="bi bi-file-earmark-text"></i> Créditos
     </a>
 
@@ -157,7 +157,7 @@
     {% endif %}
 
     <div class="nav-section">Acciones</div>
-    <a href="{{ url_for('credito_nuevo') }}">
+    <a href="{{ url_for('credito_nuevo') }}" class="{% if request.endpoint == 'credito_nuevo' %}active{% endif %}">
       <i class="bi bi-calculator"></i> Nueva Oferta
     </a>
   </nav>

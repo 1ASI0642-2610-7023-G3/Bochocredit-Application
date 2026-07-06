@@ -35,7 +35,11 @@
 
         <td>
           <a href="{{ url_for('credito_detalle', crid=c.id) }}" class="btn btn-sm" style="color:#1a56db"><i class="bi bi-eye"></i></a>
-          <a href="{{ url_for('credito_editar', crid=c.id) }}" class="btn btn-sm" style="color:#d97706"><i class="bi bi-pencil"></i></a>
+          <form action="{{ url_for('credito_eliminar', crid=c.id) }}" method="post" style="display:inline;">
+            <button type="submit" class="btn btn-sm text-danger" onclick="return confirm('¿Eliminar este crédito?');">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
         </td>
       </tr>
       {% else %}
