@@ -107,6 +107,7 @@ def dashboard():
 
         # recientes: obtener últimas simulaciones/creditos elegidos
         r_rec = requests.get(f"{BACKEND_URL}/dashboard/creditos-recientes", headers=headers)
+        print(r_rec.json())
         recientes = r_rec.json() if r_rec.ok else []
 
     except requests.exceptions.RequestException as e:
@@ -186,6 +187,12 @@ def cliente_detalle(cid):
             flash("Cliente no encontrado.", "warning")
             return redirect(url_for("clientes"))
         cliente = r_cli.json()
+
+        r_vehi = requests.get(f"{BACKEND_URL}/vehiculos/clientes/{cid}", headers=headers)
+        vehiculos = r_vehi.json() if r_vehi.ok else []
+
+        r_cred = requests.get(f"{BACKEND_URL}/creditos/clientes/{cid}", headers=headers)
+        creditos = r_cred.json() if r_cred.ok else []
 
     except requests.exceptions.RequestException:
         flash("Error al comunicarse con el backend.", "danger")
@@ -363,6 +370,42 @@ def credito_nuevo():
     return render_template("credito_form.html", clientes=clientes, vehiculos=vehiculos, titulo="Nueva Oferta de Crédito")
 
 
+@app.route("/creditos/<int:crid>/editar", methods=["GET", "POST"])
+@login_required
+def credito_editar(crid):
+    headers = _auth_headers()
+    try:
+        # Obtener crédito actual
+        r = requests.get(f"{BACKEND_URL}/creditos/{crid}", headers=headers)  # TODO
+        if not r.ok:
+            flash("Crédito no encontrado.", "warning")
+            return redirect(url_for("creditos"))
+        credito = r.json()
+
+        # Obtener lista de clientes para el formulario (si aplica)
+        r_clients = requests.get(f"{BACKEND_URL}/clientes", headers=headers)  # TODO
+        clientes = r_clients.json() if r_clients.ok else []
+
+        r_vehiculos = requests.get(f"{BACKEND_URL}/vehiculos", headers=headers)
+        vehiculos = r_vehiculos.json() if r_vehiculos.ok else []
+
+        if request.method == "POST":
+            f = request.form.to_dict()
+            payload = getCreditoRequest(f)
+
+            resp = requests.put(f"{BACKEND_URL}/creditos/{crid}", json=payload, headers=headers)  # TODO
+            if resp.ok:
+                flash("Crédito recalculado y actualizado.", "success")
+                return redirect(url_for("credito_detalle", crid=crid))
+            else:
+                flash("Error al actualizar crédito.", "danger")
+
+    except requests.exceptions.RequestException:
+        flash("Error de conexión con el backend.", "danger")
+        return redirect(url_for("creditos"))
+
+    return render_template("credito_form.html", clientes=clientes, vehiculos=vehiculos, credito=credito, titulo="Editar Crédito")
+
 
 @app.route("/creditos/<int:crid>/eliminar", methods=["POST", "DELETE"])
 @login_required
@@ -445,4 +488,4 @@ def usuario_eliminar(uid):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=3000)
+    app.run(debug=True, host='0.0.0.0', port=3000)

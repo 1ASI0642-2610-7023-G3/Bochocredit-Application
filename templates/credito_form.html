@@ -56,12 +56,19 @@
   background:#f0f4ff; cursor:not-allowed; color:#7c8db5;
 }
 .cap-field { display:none; }
+
+.locked-select {
+  pointer-events: none;
+  background-color: #e9ecef;
+}
+
 </style>
 {% endblock %}
 
 {% block content %}
 <form method="POST" id="creditoForm">
 <div class="row g-3">
+  <input type="hidden" id="isEditing" value="{{ credito is not none }}">
 
   <!-- ══════════════ LEFT — CONFIGURACIÓN ══════════════ -->
   <div class="col-lg-7">
@@ -93,7 +100,7 @@
             <option value="{{ v.id }}"
               data-precio="{{ v.precio }}"
               {% if credito and credito.vehiculoId == v.id %}selected{% endif %}>
-              {{ v.marca }} {{ v.modelo }}: {{ v.anio }}
+              {{ v.marca }} {{ v.modelo }} {{ v.anio }}: {{ v.descripcion }}
             </option>
             {% endfor %}
           </select>
@@ -319,7 +326,7 @@
             <span class="input-group-text monedaSym">S/</span>
             <input type="number" name="notariales" id="notariales"
                   class="form-control" step="0.01" min="0"
-                  value="{{ 200 }}">
+                  value="{{ credito.notariales if credito else 200 }}">
           </div>
         </div>
 
@@ -330,7 +337,7 @@
             <span class="input-group-text monedaSym">S/</span>
             <input type="number" name="registrales" id="registrales"
                   class="form-control" step="0.01" min="0"
-                  value="{{ 350 }}">
+                  value="{{ credito.registrales if credito else 350 }}">
           </div>
         </div>
       </div>
@@ -409,7 +416,7 @@
       <div id="cronogramaWrap">
         <div class="p-sep"></div>
         <div class="cron-titulo">
-          Cronograma Completo — Compra Inteligente
+          Cronograma Completo
         </div>
         <div class="cron-scroll">
           <table>
@@ -418,9 +425,7 @@
                 <th>#</th>
                 <th>PG</th>
                 <th>Saldo In.</th>
-                <th>Interés</th>
-                <th>Amort.</th>
-                <th>Seg. Desg.</th>
+                <th>Int. + Am.</th>
                 <th>Otros G.</th>
                 <th>Saldo Fin.</th>
                 <th>Flujo</th>
@@ -431,10 +436,6 @@
         </div>
 
     </div><!-- /preview-panel -->
-
-    <button type="button" id="btnSimular" class="btn btn-primary w-100 mt-3">
-      <i class="bi bi-calculator me-1"></i> Simular Cálculo
-    </button>
 
   </div><!-- /col-lg-5 -->
 
@@ -598,6 +599,7 @@ async function calcular() {
       },
       body: JSON.stringify(payload)
     });
+
     const data = await res.json();
 
 
@@ -622,7 +624,7 @@ async function calcular() {
 }
 
 document.getElementById('btnSimular').addEventListener('click', () => {
-  calcular();   // calls your backend fetch to update preview + cronograma
+  calcular();
 });
 
 // ──────────────────────────────────────────────────────────
@@ -656,8 +658,8 @@ function renderCronograma(filas, graciaTipo, graciaMeses, sym) {
       // First row: only # and Flujo
       html += `<tr class="${cls}">
         <td>${f.numCuota}</td>
-        <td></td><td></td><td></td><td></td>
         <td></td><td></td><td></td>
+        <td></td><td></td>
         <td><strong>${fmtCrono(f.flujo)}</strong></td>
       </tr>`;
     } else {
@@ -665,10 +667,8 @@ function renderCronograma(filas, graciaTipo, graciaMeses, sym) {
         <td>${f.numCuota}</td>
         <td style="font-weight:700;color:${f.tipoGracia==='T'?'#fbbf24':f.tipoGracia==='P'?'#60a5fa':'#86efac'}">${f.tipoGracia}</td>
         <td>${fmtCrono(f.saldoInicial)}</td>
-        <td>${fmtCrono(f.interes)}</td>
-        <td>${fmtCrono(f.amortizacion)}</td>
-        <td>${fmtCrono(f.seguroDesgravamen)}</td>
-        <td>${fmtCrono(f.seguroRiesgo + f.otrosGastos)}</td>
+        <td>${fmtCrono(f.interes + f.amortizacion)}</td>
+        <td>${fmtCrono(f.seguroDesgravamen + f.seguroRiesgo + f.otrosGastos)}</td>
         <td>${fmtCrono(f.saldoFinal)}</td>
         <td><strong>${fmtCrono(f.flujo)}</strong></td>
       </tr>`;
@@ -720,7 +720,7 @@ window.addEventListener('load', () => {
   // Trigger moneda al cargar
   const sym = getSym();
   document.getElementById('monedaSymbol').textContent = sym;
-  document.getElementById('sfSymbol').textContent     = sym;
+  //document.getElementById('sfSymbol').textContent     = sym;
   document.querySelectorAll('.monedaSym').forEach(el => el.textContent = sym);
 
   // Si es modo edición, disparar cálculo inicial
@@ -732,5 +732,22 @@ window.addEventListener('load', () => {
   }
   {% endif %}
 });
+
+
+
+window.addEventListener('DOMContentLoaded', () => {
+  const clienteSelect = document.getElementById('clienteSelect');
+  const vehiculoSelect = document.getElementById('vehiculoSelect');
+  const isEditing = document.getElementById('isEditing').value === 'True';
+
+  // If editing and a value is already selected, lock it
+  if (isEditing && clienteSelect.value) {
+    clienteSelect.classList.add('locked-select');
+  }
+  if (isEditing && vehiculoSelect.value) {
+    vehiculoSelect.classList.add('locked-select');
+  }
+});
+
 </script>
 {% endblock %}
