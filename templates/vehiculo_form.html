@@ -10,23 +10,27 @@
         <div class="row g-3">
           <div class="col-md-6">
             <label class="form-label">Marca *</label>
-            <input type="text" name="marca" class="form-control" value="{{ vehiculo.marca if vehiculo else '' }}" required>
+            <input type="text" name="marca" class="form-control" value="{{ vehiculo.marca if vehiculo else '' }}"
+              placeholder="Ej: Toyota" minlength="3" required>
           </div>
           <div class="col-md-6">
             <label class="form-label">Modelo *</label>
-            <input type="text" name="modelo" class="form-control" value="{{ vehiculo.modelo if vehiculo else '' }}" required>
+            <input type="text" name="modelo" class="form-control" value="{{ vehiculo.modelo if vehiculo else '' }}"
+              placeholder="Ej: Corolla" minlength="2" required>
           </div>
           <div class="col-md-4">
             <label class="form-label">Año *</label>
-            <input type="number" name="anio" class="form-control" value="{{ vehiculo.anio if vehiculo else 2024 }}" min="1990" max="2030">
+            <input type="number" name="anio" class="form-control" value="{{ vehiculo.anio if vehiculo else 2020 }}" min="1990" max="2030">
           </div>
           <div class="col-md-8">
             <label class="form-label">Precio (S/) *</label>
-            <input type="number" name="precio" class="form-control" step="0.01" value="{{ vehiculo.precio if vehiculo else '' }}" required>
+            <input type="number" name="precio" class="form-control" step="0.01" value="{{ vehiculo.precio if vehiculo else '' }}"
+              placeholder="Ej: 25000.00" required>
           </div>
           <div class="col-12">
             <label class="form-label">Descripción</label>
-            <input type="text" name="descripcion" class="form-control" value="{{ vehiculo.descripcion if vehiculo else '' }}" placeholder="Color, versión, equipamiento...">
+            <input type="text" name="descripcion" class="form-control" value="{{ vehiculo.descripcion if vehiculo else '' }}"
+            placeholder="Ej: Color: Rojo, Kilometraje: 100 km...">
           </div>
         </div>
         <div class="d-flex gap-2 mt-3">

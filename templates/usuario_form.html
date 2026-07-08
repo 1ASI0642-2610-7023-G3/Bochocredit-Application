@@ -7,22 +7,34 @@
     <div class="form-card">
       <form method="POST">
         <div class="section-title">Datos Personales</div>
+        <p class="form-text text-muted mb-3">
+          Una vez termine de registrar al empleado, se le proporcionará una contraseña de un solo uso. Cópiela y entregue a su empleado.
+          Llene todos los campos.
+        </p>
         <div class="row g-3 mb-3">
           <div class="col-md-6">
             <label class="form-label">Nombres *</label>
-            <input type="text" name="nombres" class="form-control" value="{{ usuario.nombres if usuario else '' }}" required>
+            <input type="text" name="nombres" class="form-control" value="{{ usuario.nombres if usuario else '' }}"
+              placeholder="Ej: Juan Carlos" minlength="2" required>
           </div>
           <div class="col-md-6">
             <label class="form-label">Apellidos *</label>
-            <input type="text" name="apellidos" class="form-control" value="{{ usuario.apellidos if usuario else '' }}" required>
+            <input type="text" name="apellidos" class="form-control" value="{{ usuario.apellidos if usuario else '' }}"
+              placeholder="Ej: Pérez González" minlength="2" required>
           </div>
           <div class="col-md-4">
             <label class="form-label">Username *</label>
-            <input type="text" name="username" class="form-control" maxlength="50" value="{{ usuario.username if usuario else '' }}" required>
+            <input type="text" name="username" class="form-control" maxlength="50" value="{{ usuario.username if usuario else '' }}"
+              placeholder="Ej: juan_perez23" minlength="6" pattern="^[A-Za-z0-9_#]{6,50}$" required>
+              <small class="form-text text-muted">
+                  El nombre de usuario debe tener entre 6 y 50 caracteres, 
+                  y solo puede contener letras, números, guion bajo (_) o numeral (#).
+              </small>
           </div>
           <div class="col-md-4">
             <label class="form-label">Email *</label>
-            <input type="email" name="email" class="form-control" value="{{ usuario.email if usuario else '' }}" required>
+            <input type="email" name="email" class="form-control" value="{{ usuario.email if usuario else '' }}"
+              placeholder="Ej: juan.perez@gmail.com" required>
           </div>
         </div>
         <div class="d-flex gap-2 mt-2">
