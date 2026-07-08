@@ -22,16 +22,12 @@
             <input type="text" name="apellidos" class="form-control" value="{{ usuario.apellidos if usuario else '' }}"
               placeholder="Ej: Pérez González" minlength="2" required>
           </div>
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label">Username *</label>
             <input type="text" name="username" class="form-control" maxlength="50" value="{{ usuario.username if usuario else '' }}"
               placeholder="Ej: juan_perez23" minlength="6" pattern="^[A-Za-z0-9_#]{6,50}$" required>
-              <small class="form-text text-muted">
-                  El nombre de usuario debe tener entre 6 y 50 caracteres, 
-                  y solo puede contener letras, números, guion bajo (_) o numeral (#).
-              </small>
           </div>
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label">Email *</label>
             <input type="email" name="email" class="form-control" value="{{ usuario.email if usuario else '' }}"
               placeholder="Ej: juan.perez@gmail.com" required>

@@ -7,7 +7,7 @@
   <div class="col-md-3">
     <div class="indicator-box">
       <div class="ind-label">TCEA (SBS)</div>
-      <div class="ind-val ind-positive">{{ credito.tcea }}%</div>
+      <div class="ind-val ind-positive">{{ "{:,.2f}".format(credito.tcea * 100) }}%</div>
       <div class="ind-sub">Costo Efectivo Anual</div>
     </div>
   </div>
@@ -21,7 +21,7 @@
   <div class="col-md-3">
     <div class="indicator-box">
       <div class="ind-label">TIR Mensual</div>
-      <div class="ind-val" style="color:#7c3aed">{{ credito.tir }}%</div>
+      <div class="ind-val" style="color:#7c3aed">{{ "{:,.2f}".format(credito.tir * 100) }}%</div>
       <div class="ind-sub">Tasa Interna de Retorno</div>
     </div>
   </div>
@@ -103,13 +103,13 @@
         <tr>
           <th>#</th>
           <th>PG</th>
-          <th>Saldo Inicial</th>
+          <th>Saldo In.</th>
           <th>Interés</th>
           <th>Amort.</th>
-          <th>Seg. Desgrav.</th>
+          <th>Seg. Desg.</th>
           <th>Cuota</th>
-          <th>Seg. Vehicular</th>
-          <th>Otros Gastos</th>
+          <th>Seg. Vehi.</th>
+          <th>O. Gastos</th>
           <th>Saldo Final</th>
           <th>Flujo</th>
           {% if credito.esElegido %}
