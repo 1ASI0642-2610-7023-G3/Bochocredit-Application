@@ -487,5 +487,11 @@ def usuario_eliminar(uid):
     return redirect(url_for("usuarios"))
 
 
+@app.route("/ayuda")
+@login_required
+def ayuda():
+    return render_template("faq.html", titulo="Ayuda y FAQ")
+
+
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=3000)
