@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Clientes — BochoCredit{% endblock %}
+{% block page_title %}Clientes{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div style="color:#7c8db5;font-size:.85rem">{{ clientes|length }} cliente(s) registrado(s)</div>
+  <a href="{{ url_for('cliente_nuevo') }}" class="btn btn-bc-primary px-4">
+    <i class="bi bi-person-plus me-1"></i> Nuevo Cliente
+  </a>
+</div>
+<div class="bc-table">
+  <table class="table">
+    <thead>
+      <tr><th>DNI</th><th>Nombre</th><th>Teléfono</th><th>Email</th><th>Acciones</th></tr>
+    </thead>
+    <tbody>
+      {% for c in clientes %}
+      <tr>
+        <td><code>{{ c.dni }}</code></td>
+        <td><strong>{{ c.nombres + " " + c.apellidos }}</strong></td>
+        <td>{{ c.telefono or '—' }}</td>
+        <td>{{ c.email or '—' }}</td>
+        <td>
+          <a href="{{ url_for('cliente_detalle', cid=c.id) }}" class="btn btn-sm" style="color:#1a56db"><i class="bi bi-eye"></i></a>
+          <a href="{{ url_for('cliente_editar', cid=c.id) }}" class="btn btn-sm" style="color:#d97706"><i class="bi bi-pencil"></i></a>
+          <form method="POST" action="{{ url_for('cliente_eliminar', cid=c.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar cliente?')">
+            <button class="btn btn-sm" style="color:#dc2626"><i class="bi bi-trash"></i></button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="text-center text-muted py-4">No hay clientes. <a href="{{ url_for('cliente_nuevo') }}">Registrar primero</a></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

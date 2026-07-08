@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — BochoCredit{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block content %}
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#dbeafe"><i class="bi bi-people" style="color:#1a56db"></i></div>
+      <div>
+        <div class="stat-label">Clientes</div>
+        <div class="stat-val">{{ stats.clientes }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#dcfce7"><i class="bi bi-car-front" style="color:#16a34a"></i></div>
+      <div>
+        <div class="stat-label">Vehículos</div>
+        <div class="stat-val">{{ stats.vehiculos }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#fef3c7"><i class="bi bi-file-earmark-text" style="color:#d97706"></i></div>
+      <div>
+        <div class="stat-label">Créditos</div>
+        <div class="stat-val">{{ stats.creditos }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div style="background:#fff;border-radius:14px;padding:1.3rem 1.5rem;box-shadow:0 1px 8px rgba(0,0,0,.05)">
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <span style="font-size:.82rem;color:#7c8db5;font-weight:600">ACCIONES RÁPIDAS</span>
+        <a href="{{ url_for('cliente_nuevo') }}" class="btn btn-bc-primary btn-sm px-3">
+          <i class="bi bi-person-plus me-1"></i> Nuevo Cliente
+        </a>
+        <a href="{{ url_for('vehiculo_nuevo') }}" class="btn btn-sm px-3" style="background:#dcfce7;color:#16a34a;border:none;border-radius:9px;font-weight:600;font-size:.88rem">
+          <i class="bi bi-car-front me-1"></i> Registrar Vehículo
+        </a>
+        <a href="{{ url_for('credito_nuevo') }}" class="btn btn-bc-gold btn-sm px-3">
+          <i class="bi bi-calculator me-1"></i> Generar Oferta de Crédito
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recientes -->
+<div class="bc-table">
+  <div class="d-flex align-items-center justify-content-between px-3 py-2" style="border-bottom:1px solid #f0f4ff">
+    <span style="font-weight:700;color:#0b1e3d;font-size:.92rem"><i class="bi bi-clock-history me-2" style="color:#1a56db"></i>Créditos Recientes</span>
+    <a href="{{ url_for('creditos') }}" class="btn btn-sm" style="font-size:.78rem;color:#1a56db">Ver todos <i class="bi bi-arrow-right"></i></a>
+  </div>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>#</th><th>Cliente</th><th>Moneda</th><th>Préstamo</th><th>TCEA</th><th>Fecha</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in recientes %}
+      <tr>
+        <td class="text-muted">{{ r.id }}</td>
+        <td><strong>{{ r.cliente }}</strong></td>
+        <td>
+          {% if r.moneda == 'soles' %}
+            <span class="badge badge-sol px-2 py-1">S/ Soles</span>
+          {% else %}
+            <span class="badge badge-usd px-2 py-1">$ Dólares</span>
+          {% endif %}
+        </td>
+        <td>{{ "S/ " if r.moneda=='soles' else "$ " }}{{ "{:,.2f}".format(r.prestamo) }}</td>
+        <td><span style="font-weight:700;color:#dc2626">{{ r.tcea }}%</span></td>
+        <td class="text-muted" style="font-size:.78rem">{{ r.creadoEn[:16] }}</td>
+        <td><a href="{{ url_for('credito_detalle', crid=r.id) }}" class="btn btn-sm" style="font-size:.75rem;color:#1a56db"><i class="bi bi-eye"></i></a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="text-center text-muted py-4">No hay créditos aún. <a href="{{ url_for('credito_nuevo') }}">Crear el primero</a></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

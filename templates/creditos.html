@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Créditos — BochoCredit{% endblock %}
+{% block page_title %}Créditos Vehiculares{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div style="color:#7c8db5;font-size:.85rem">{{ creditos|length }} oferta(s) generada(s)</div>
+  <a href="{{ url_for('credito_nuevo') }}" class="btn btn-bc-gold px-4">
+    <i class="bi bi-calculator me-1"></i> Nueva Oferta
+  </a>
+</div>
+<div class="bc-table">
+  <table class="table">
+    <thead>
+      <tr><th>#</th><th>Cliente</th><th>Vehículo</th><th>Moneda</th><th>Préstamo</th><th>Plazo</th><th>TCEA</th><th>VAN</th><th>TIR</th><th>Fecha</th><th>Acciones</th></tr>
+    </thead>
+    <tbody>
+      {% for c in creditos %}
+      <tr>
+        <td class="text-muted">{{ c.id }}</td>
+        <td><strong>{{ c.cliente }}</strong></td>
+        <td>{{ c.vehiculo }}</td>
+        <td>
+          {% if c.moneda == 'soles' %}
+          <span class="badge badge-sol px-2">S/</span>
+          {% else %}
+          <span class="badge badge-usd px-2">$</span>
+          {% endif %}
+        </td>
+        <td><strong style="color:#dc2626">{{ "{:,.2f}".format(c.prestamo) }}</strong></td>
+        <td>{{ c.plazoMeses }} m</td>
+        <td><strong style="color:#262fdc">{{ c.tcea }}%</strong></td>
+        <td style="color:#262fdc">{{ "{:,.2f}".format(c.van) }}</td>
+        <td>{{ c.tir }}%</td>
+        <td>{{ c.creadoEn[8:10] }}/{{ c.creadoEn[5:7] }}/{{ c.creadoEn[0:4] }}</td>
+
+        <td>
+          <a href="{{ url_for('credito_detalle', crid=c.id) }}" class="btn btn-sm" style="color:#1a56db"><i class="bi bi-eye"></i></a>
+          <a href="{{ url_for('credito_editar', crid=c.id) }}" class="btn btn-sm" style="color:#d97706"><i class="bi bi-pencil"></i></a>
+          <form action="{{ url_for('credito_eliminar', crid=c.id) }}" method="post" style="display:inline;">
+            <button type="submit" class="btn btn-sm text-danger" onclick="return confirm('¿Eliminar este crédito?');">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="11" class="text-center text-muted py-4">Ningún crédito. <a href="{{ url_for('credito_nuevo') }}">Generar primera oferta</a></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
