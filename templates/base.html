@@ -160,6 +160,10 @@
     <a href="{{ url_for('credito_nuevo') }}" class="{% if request.endpoint == 'credito_nuevo' %}active{% endif %}">
       <i class="bi bi-calculator"></i> Nueva Oferta
     </a>
+    <div class="nav-section">Soporte</div>
+    <a href="{{ url_for('ayuda') }}" class="{% if request.endpoint == 'ayuda' %}active{% endif %}">
+      <i class="bi bi-question-circle"></i> Ayuda y FAQ
+    </a>
   </nav>
   <div class="sidebar-footer">
     <i class="bi bi-person-circle me-1"></i> {{ session.nombre or session.username }}
